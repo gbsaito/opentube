@@ -69,14 +69,15 @@ print("== PHASE0 home ==")
 for probe in ["search y", "history", "playlists", "subscriptions", "settings", "quit"]:
     print("has", repr(probe), ":", probe in text)
 
-send(b"\x1b"); time.sleep(0.3)
-for _ in range(3):
-    send(b"\x1b[B"); time.sleep(0.12)
+send(b"hello"); time.sleep(0.4)
 send(b"\r"); time.sleep(1.0)
-read_until(idle_ms=800, total_ms=2500)
+read_until(idle_ms=2000, total_ms=14000)  # yt-dlp search takes a few seconds
 t2 = ANSI.sub(b"", buf_all).decode("utf-8", "ignore").replace("\x0c", "\n")
-print("== PHASE1 settings ==", "backend" in t2, "results_count" in t2)
-send(b"\x1b"); time.sleep(0.8)
+print("== PHASE1 results ==")
+for probe in ["Al", "Lady Antebellum", "Alan Walker", "search"]:
+    print("has", repr(probe), ":", probe in t2)
+print("TABBED:", repr(t2[-900:]))
+send(b"\x1b"); time.sleep(0.6)
 read_until(idle_ms=800, total_ms=2500)
 t3 = ANSI.sub(b"", buf_all).decode("utf-8", "ignore").replace("\x0c", "\n")
 print("== PHASE2 back home ==", "search y" in t3)
