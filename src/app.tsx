@@ -241,6 +241,7 @@ const Chrome: Component<{ title: string }> = (props) => (
 function homeKeys(e: { name: string }) {
   if (inputMode()) {
     if (e.name === "return") return void doSearch(query())
+    if (e.name === "slash") return setInputMode(false) // / from focused input -> quick access
     return // input owns the other keys; its onKeyDown handles escape
   }
   if (e.name === "up" || e.name === "k") return setQuickIndex((i) => (i + QUICK.length - 1) % QUICK.length)
