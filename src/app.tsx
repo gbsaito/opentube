@@ -14,6 +14,7 @@ import {
   history,
   type Store,
   type Video,
+  type Settings,
 } from "./config"
 import { searchVideos, searchMoreVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
 import { play } from "./player"
@@ -27,7 +28,7 @@ type Screen = "home" | "results" | "history" | "playlists" | "subscriptions" | "
 const fmtViews = (s: string) => (/^\d+$/.test(s) ? Number(s).toLocaleString("en-US") : s)
 
 const QUICK: string[] = ["history", "playlists", "subscriptions", "settings", "quit"]
-const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count"]
+const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews"]
 const INVIDIOUS_INSTANCES: string[] = [
   "https://yt.chocolatemoo53.com",
   "https://inv.nadeko.net",
@@ -40,6 +41,7 @@ const INVIDIOUS_INSTANCES: string[] = [
   "https://inv.nadeko.ygg",
 ]
 const BACKEND_ORDER: BackendKey[] = ["yt-dlp", "invidious"]
+const RENDERER_LIST: readonly Settings["image_renderer"][] = ["auto", "icat", "sixel", "chafa"]
 const HINTS = "↑↓/jk move · ←→ page · enter play · p audio · s subscribe · l add playlist · d delete · q quit · esc back"
 
 // --- app state -----------------------------------------------------------------
@@ -283,18 +285,28 @@ export const App: Component = () => {
 
     if (screen() === "settings") {
       if (e.name === "escape") return setScreen("home")
-      const rows = SETTINGS_KEYS
+      const rows = settingsRows()
       if (e.name === "up" || e.name === "k") return setSRow((r) => (r + rows.length - 1) % rows.length)
       if (e.name === "down" || e.name === "j") return setSRow((r) => (r + 1) % rows.length)
       const row = rows[sRow()]!
       const cycle = (dir: number) => {
+        const s = settings() as any
         if (row === "backend") {
           setSettings({ ...settings(), backend: BACKEND_ORDER[(BACKEND_ORDER.indexOf(settings().backend) + dir + 2) % 2]! } as any)
-        } else {
-          // unknown/off-list entry sits on a virtual first slot: left -> pool end, right -> pool start
+        } else if (row === "image_renderer") {
+          const idx = RENDERER_LIST.indexOf(s.image_renderer)
+          const next = RENDERER_LIST[(idx + dir + RENDERER_LIST.length) % RENDERER_LIST.length]!
+          setSettings({ ...settings(), image_renderer: next } as any)
+        } else if (row === "invidious_instance") {
           const idx = INVIDIOUS_INSTANCES.indexOf(settings().invidious_instance)
           const next = idx < 0 ? (dir < 0 ? INVIDIOUS_INSTANCES.length - 1 : 0) : INVIDIOUS_INSTANCES[(idx + dir + INVIDIOUS_INSTANCES.length) % INVIDIOUS_INSTANCES.length]!
           setSettings({ ...settings(), invidious_instance: next } as any)
+        } else if (row === "previews" || row === "image_previews") {
+          setSettings({ ...settings(), [row]: !settings()[row] } as any)
+        } else if (row === "results_count") {
+          setEditing("results_count")
+          setEditBuf(String(settings().results_count))
+          return
         }
         saveConf()
       }
@@ -401,6 +413,12 @@ function homeKeys(e: { name: string; preventDefault(): void }) {
 }
 
 // --- screens ------------------------------------------------------------------------
+function settingsRows(): string[] {
+  const rows = [...SETTINGS_KEYS]
+  if (settings().image_previews) rows.push("image_renderer")
+  return rows
+}
+
 function Home() {
   return (
     <box flexGrow={1} backgroundColor={theme.bg} justifyContent="center" alignItems="center">
@@ -479,7 +497,9 @@ function Results() {
           {() => <ListHint text="loading more…" />}
         </Show>
       </scrollbox>
-      <Sidebar />
+      <Show when={settings().previews || settings().image_previews}>
+        <Sidebar />
+      </Show>
     </box>
   )
 }
@@ -493,7 +513,9 @@ function StoreScreen() {
         </Show>
         <For each={visibleList()}>{(v, i) => <ListRow v={v} selected={i() === localFocus()} />}</For>
       </scrollbox>
-      <Sidebar />
+      <Show when={settings().previews || settings().image_previews}>
+        <Sidebar />
+      </Show>
     </box>
   )
 }
@@ -506,53 +528,85 @@ const ListHint: Component<{ text: string; color?: string }> = (props) => (
 
 const Sidebar: Component = () => {
   const v = currentVideo
+  const infoOn = () => settings().previews
+  const imageOn = () => settings().image_previews
+  const renderProtocol = (): "auto" | "kitty" | "sixel" | "blocks" => {
+    const r = settings().image_renderer
+    if (r === "auto") return "auto"
+    if (r === "icat") return "kitty" // icat = kitty graphics protocol
+    if (r === "sixel") return "sixel"
+    if (r === "chafa") return "blocks" // chafa-style: in-process unicode blocks fallback (dumb terminals)
+    return "auto"
+  }
   return (
     <box width={44} flexDirection="column" paddingLeft={1} paddingTop={1}>
-      <box height={13} justifyContent="center" alignItems="center">
-        <Show when={thumb()} fallback={<text fg={theme.faint}>...</text>}>
-          {() => <image source={thumb()!} fit="fit" width={42} height={12} protocol="kitty" />}
+      <Show when={imageOn()}>
+        <box height={13} justifyContent="center" alignItems="center">
+          <Show when={thumb()} fallback={<text fg={theme.faint}>...</text>}>
+            {() => <image source={thumb()!} fit="fit" width={42} height={12} protocol={renderProtocol()} />}
+          </Show>
+        </box>
+      </Show>
+      <Show when={infoOn()}>
+        <box height={1} />
+        <Show when={v()}>
+          {() => (
+            <>
+              <text fg={theme.fg}>{v()!.title}</text>
+              <text>
+                <Span fg={theme.muted}>Channel: </Span>
+                <Span fg={theme.fg}>{v()!.channel}</Span>
+              </text>
+              <text>
+                <Span fg={theme.muted}>Upload Date: </Span>
+                <Span fg={theme.fg}>{v()!.date || sidebarMeta()?.date || ""}</Span>
+              </text>
+              <text>
+                <Span fg={theme.muted}>Views: </Span>
+                <Span fg={theme.fg}>{fmtViews(v()!.views || sidebarMeta()?.views || "")}</Span>
+              </text>
+              <Show when={v()!.description || sidebarMeta()?.description}>
+                {() => <text fg={theme.faint}>{(v()!.description || sidebarMeta()?.description || "").slice(0, 200)}</text>}
+              </Show>
+            </>
+          )}
         </Show>
-      </box>
-      <Show when={v()}>
-        {() => (
-          <>
-            <text fg={theme.fg}>{v()!.title}</text>
-            <text>
-              <Span fg={theme.muted}>Channel: </Span>
-              <Span fg={theme.fg}>{v()!.channel}</Span>
-            </text>
-            <text>
-              <Span fg={theme.muted}>Upload Date: </Span>
-              <Span fg={theme.fg}>{v()!.date || sidebarMeta()?.date || ""}</Span>
-            </text>
-            <text>
-              <Span fg={theme.muted}>Views: </Span>
-              <Span fg={theme.fg}>{fmtViews(v()!.views || sidebarMeta()?.views || "")}</Span>
-            </text>
-            <Show when={v()!.description || sidebarMeta()?.description}>
-              {() => <text fg={theme.faint}>{(v()!.description || sidebarMeta()?.description || "").slice(0, 200)}</text>}
-            </Show>
-          </>
-        )}
       </Show>
     </box>
   )
 }
 
 function Settings() {
-  const rows = SETTINGS_KEYS
+  const rows = () => settingsRows()
   return (
     <box flexGrow={1} paddingLeft={2} paddingTop={1}>
-      <For each={rows}>
+      <For each={rows()}>
         {(row, i) => {
           const focused = () => i() === sRow()
+          const isBool = () => row === "previews" || row === "image_previews"
+          const isEditing = () => editing() === row
+          const value = () => {
+            const s = settings() as any
+            if (isBool()) return s[row] ? "on" : "off"
+            if (row === "image_renderer") return s.image_renderer
+            return String(s[row])
+          }
           return (
             <box height={1}>
               <text>
                 <Span fg={focused() ? theme.accent : theme.selectionBg}>{focused() ? " ▸ " : "   "}</Span>
                 <Span fg={focused() ? theme.selectionFg : theme.muted}>{row} = </Span>
-                <Show when={editing() !== row} fallback={<Span fg={theme.accent}>{editBuf()}█</Span>}>
-                  <Span fg={focused() ? theme.selectionFg : theme.fg}>{String((settings() as any)[row])}</Span>
+                <Show when={!isEditing()}>
+                  <Span fg={focused() ? theme.selectionFg : theme.fg}>{value()}</Span>
+                </Show>
+                <Show when={isEditing()}>
+                  {() => (
+                    <>
+                      <Span fg={theme.selectionFg}>editing: </Span>
+                      <Span fg={theme.fg}>{editBuf()}</Span>
+                      <Span fg={theme.accent}>█</Span>
+                    </>
+                  )}
                 </Show>
               </text>
             </box>
@@ -560,7 +614,7 @@ function Settings() {
         }}
       </For>
       <box height={1} />
-      <text fg={theme.faint}>↑↓ move · ↔ cycle · enter edit · esc back</text>
+      <text fg={theme.faint}>↑↓ move · ←→ cycle · enter edit · esc back</text>
     </box>
   )
 }

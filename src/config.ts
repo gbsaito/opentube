@@ -19,13 +19,21 @@ export interface Settings {
   backend: "yt-dlp" | "invidious"
   results_count: number
   invidious_instance: string
+  previews: boolean // info sidebar
+  image_previews: boolean // thumbnail
+  image_renderer: "auto" | "icat" | "sixel" | "chafa"
 }
 
 const DEFAULTS: Settings = {
   backend: "yt-dlp",
   results_count: 25,
   invidious_instance: "https://yt.chocolatemoo53.com",
+  previews: true,
+  image_previews: true,
+  image_renderer: "auto",
 }
+
+const RENDERERS: readonly Settings["image_renderer"][] = ["auto", "icat", "sixel", "chafa"]
 
 export const [settings, setSettings] = createSignal<Settings>(DEFAULTS)
 
@@ -45,12 +53,18 @@ function parseConf(text: string): Record<string, string> {
 export function loadSettings() {
   try {
     const conf = parseConf(readFileSync(`${CONFIG_DIR}/opentube.conf`, "utf-8"))
+    const backend = conf.backend === "invidious" ? "invidious" : "yt-dlp"
+    const previews = conf.previews !== undefined ? conf.previews === "true" : DEFAULTS.previews
+    const imagePreviews = conf["image_previews"] !== undefined ? conf["image_previews"] === "true" : DEFAULTS.image_previews
+    const imageRenderer = RENDERERS.includes(conf["image_renderer"] as Settings["image_renderer"]) ? (conf["image_renderer"] as Settings["image_renderer"]) : DEFAULTS.image_renderer
     setSettings({
       ...DEFAULTS,
-      ...conf,
-      // piped was removed; migrate stale confs back to the default backend
-      backend: conf.backend === "invidious" ? "invidious" : DEFAULTS.backend,
+      backend,
+      invidious_instance: conf.invidious_instance ?? DEFAULTS.invidious_instance,
       results_count: Number(conf.results_count ?? DEFAULTS.results_count),
+      previews,
+      image_previews: imagePreviews,
+      image_renderer: imageRenderer,
     } as Settings)
   } catch {
     // no conf yet -> defaults
@@ -67,6 +81,9 @@ export function saveConf() {
       `backend = ${s.backend}`,
       `results_count = ${s.results_count}`,
       `invidious_instance = ${s.invidious_instance}`,
+      `previews = ${s.previews}`,
+      `image_previews = ${s.image_previews}`,
+      `image_renderer = ${s.image_renderer}`,
     ].join("\n") + "\n",
   )
 }
