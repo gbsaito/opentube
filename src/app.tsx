@@ -39,7 +39,7 @@ const INVIDIOUS_INSTANCES: string[] = [
 ]
 const PIPED_INSTANCES: string[] = ["https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de", "https://api.piped.private.coffee"]
 const BACKEND_ORDER: BackendKey[] = ["yt-dlp", "invidious", "piped"]
-const HINTS = "↑↓/jk move · enter play · p audio · s subscribe · l add playlist · d delete · esc back"
+const HINTS = "↑↓/jk move · enter play · p audio · s subscribe · l add playlist · d delete · q quit · esc back"
 
 // --- app state -----------------------------------------------------------------
 const [screen, setScreen] = createSignal<Screen>("home")
@@ -179,6 +179,9 @@ export const App: Component = () => {
       }
       return
     }
+
+    // q quits unless the user is typing inside the search input
+    if (e.name === "q" && !(screen() === "home" && inputMode())) return void quitApp()
 
     if (screen() === "home") return homeKeys(e)
 
