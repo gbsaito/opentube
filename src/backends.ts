@@ -1,10 +1,9 @@
 import { settings, type Video } from "./config"
 
-export type BackendKey = "yt-dlp" | "invidious" | "piped"
+export type BackendKey = "yt-dlp" | "invidious"
 
 // default instance pools: user setting first, then fallbacks for dead instances
 const INVIDIOUS = ["https://yt.chocolatemoo53.com", "https://inv.nadeko.net", "https://invidious.nerdvpn.de"]
-const PIPED = ["https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de", "https://api.piped.private.coffee"]
 
 // --- yt-dlp ---------------------------------------------------------------------
 async function viaYtDlp(query: string): Promise<Video[]> {
@@ -38,20 +37,6 @@ async function viaInvidious(query: string): Promise<Video[]> {
     date: v.publishedText ?? "",
     description: clean(v.description),
     duration: v.lengthSeconds > 0 ? fmtDuration(v.lengthSeconds) : "",
-  }))
-}
-
-// --- piped ---------------------------------------------------------------------------
-async function viaPiped(query: string): Promise<Video[]> {
-  const q = encodeURIComponent(query)
-  const json = await getJsonAny<any>(candidate(PIPED, settings().piped_instance).map((i) => `${i}/api/v1/search?q=${q}&filter=videos`))
-  return (json.items ?? []).map((v: any) => ({
-    id: (v.url ?? "").split("v=")[1] ?? "",
-    title: v.title,
-    channel: v.uploaderName ?? "",
-    date: v.uploadedDate ?? "",
-    description: clean(String(v.description ?? "")),
-    duration: v.duration > 0 ? fmtDuration(v.duration) : "",
   }))
 }
 
@@ -102,11 +87,31 @@ function candidate(pool: string[], user: string): string[] {
 const BACKENDS: Record<BackendKey, (query: string) => Promise<Video[]>> = {
   "yt-dlp": viaYtDlp,
   invidious: viaInvidious,
-  piped: viaPiped,
 }
 
 export function searchVideos(query: string): Promise<Video[]> {
   return BACKENDS[settings().backend](query)
+}
+
+// ponytail: ceiling is one request per selected video; upgrade to prefetch of neighbors when scroll feels sluggish
+const descCache = new Map<string, string>()
+/** full description for one id: invidious search rows ship description empty */
+export async function videoDescription(id: string): Promise<string> {
+  const hit = descCache.get(id)
+  if (hit !== undefined) return hit
+  const urls = candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/videos/${id}`)
+  let desc = ""
+  for (const u of urls) {
+    try {
+      const j = (await getJson<any>(u)) as any
+      desc = clean(String(j.description ?? j.descriptionHtml ?? ""))
+      break
+    } catch {
+      // try next instance
+    }
+  }
+  descCache.set(id, desc)
+  return desc
 }
 
 export const ERR_MSG = (e: unknown) => (e instanceof Error ? e.message : String(e))

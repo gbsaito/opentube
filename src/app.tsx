@@ -15,7 +15,7 @@ import {
   type Store,
   type Video,
 } from "./config"
-import { searchVideos, ERR_MSG, type BackendKey } from "./backends"
+import { searchVideos, videoDescription, ERR_MSG, type BackendKey } from "./backends"
 import { play } from "./player"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
@@ -24,7 +24,7 @@ const Span: Component<any> = (props) => <span {...props} />
 type Screen = "home" | "results" | "history" | "playlists" | "subscriptions" | "settings"
 
 const QUICK: string[] = ["history", "playlists", "subscriptions", "settings", "quit"]
-const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "piped_instance", "results_count"]
+const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count"]
 const INVIDIOUS_INSTANCES: string[] = [
   "https://yt.chocolatemoo53.com",
   "https://inv.nadeko.net",
@@ -36,8 +36,7 @@ const INVIDIOUS_INSTANCES: string[] = [
   "https://inv-ygg.nadeko.net",
   "https://inv.nadeko.ygg",
 ]
-const PIPED_INSTANCES: string[] = ["https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de", "https://api.piped.private.coffee"]
-const BACKEND_ORDER: BackendKey[] = ["yt-dlp", "invidious", "piped"]
+const BACKEND_ORDER: BackendKey[] = ["yt-dlp", "invidious"]
 const HINTS = "↑↓/jk move · enter play · p audio · s subscribe · l add playlist · d delete · q quit · esc back"
 
 // --- app state -----------------------------------------------------------------
@@ -59,13 +58,26 @@ const [editBuf, setEditBuf] = createSignal("")
 
 function commitEdit() {
   const key = editing()
-  if (!key || key === "backend") return setEditing(null)
+  if (!key) return setEditing(null)
   const s = { ...settings() } as any
   if (key === "results_count") s.results_count = Math.min(Math.max(parseInt(editBuf(), 10) || 25, 1), 50)
   else s[key] = editBuf()
   setSettings(s)
   saveConf()
   setEditing(null)
+}
+
+// description that may need a follow-up fetch (invidious search rows ship empty ones)
+const [sidebarDesc, setSidebarDesc] = createSignal<string | null>(null)
+let descId = ""
+async function updateDescription(v: Video | undefined) {
+  const id = v?.id ?? ""
+  descId = id
+  if (v?.description) return setSidebarDesc(v.description)
+  setSidebarDesc(null)
+  if (!id) return
+  const d = await videoDescription(id)
+  if (descId === id) setSidebarDesc(d || null) // ignore stale responses
 }
 
 // sidebar thumbnail
@@ -121,6 +133,7 @@ async function doSearch(q: string) {
   try {
     setVideos(await searchVideos(q))
     void updateThumb(videos()[0])
+    void updateDescription(videos()[0])
   } catch (e) {
     setVideos([])
     setError(ERR_MSG(e))
@@ -137,6 +150,7 @@ function moveSelection(delta: number) {
   const picked = list[next]
   if (picked) listScrollRef?.scrollChildIntoView(`row-${picked.id}`, { align: "nearest" })
   if (screen() === "results") void updateThumb(picked)
+  void updateDescription(picked)
 }
 
 function playCurrent(mode: "video" | "audio") {
@@ -172,10 +186,9 @@ export const App: Component = () => {
     if (editing()) {
       if (e.name === "return") return commitEdit()
       if (e.name === "escape") return setEditing(null)
-      if (editing() !== "backend") {
-        if (e.sequence && e.sequence.length === 1 && e.sequence.charCodeAt(0) >= 32) setEditBuf(editBuf() + e.sequence)
-        else if (e.name === "backspace") setEditBuf(editBuf().slice(0, -1))
-      }
+      const cp = e.sequence?.length === 1 ? e.sequence.charCodeAt(0) : 0
+      if (cp >= 32 && cp !== 127) setEditBuf(editBuf() + e.sequence)
+      else if (e.name === "backspace") setEditBuf(editBuf().slice(0, -1))
       return
     }
 
@@ -186,28 +199,29 @@ export const App: Component = () => {
 
     if (screen() === "settings") {
       if (e.name === "escape") return setScreen("home")
-      const rows = settingsRows()
+      const rows = SETTINGS_KEYS
       if (e.name === "up" || e.name === "k") return setSRow((r) => (r + rows.length - 1) % rows.length)
       if (e.name === "down" || e.name === "j") return setSRow((r) => (r + 1) % rows.length)
-      if (e.name === "return" || e.name === "space") {
-        const row = rows[sRow()]!
+      const row = rows[sRow()]!
+      const cycle = (dir: number) => {
         if (row === "backend") {
-          setSettings({ ...settings(), backend: BACKEND_ORDER[(BACKEND_ORDER.indexOf(settings().backend) + 1) % 3]! } as any)
-          saveConf()
-          return
+          setSettings({ ...settings(), backend: BACKEND_ORDER[(BACKEND_ORDER.indexOf(settings().backend) + dir + 2) % 2]! } as any)
+        } else {
+          // unknown/off-list entry sits on a virtual first slot: left -> pool end, right -> pool start
+          const idx = INVIDIOUS_INSTANCES.indexOf(settings().invidious_instance)
+          const next = idx < 0 ? (dir < 0 ? INVIDIOUS_INSTANCES.length - 1 : 0) : INVIDIOUS_INSTANCES[(idx + dir + INVIDIOUS_INSTANCES.length) % INVIDIOUS_INSTANCES.length]!
+          setSettings({ ...settings(), invidious_instance: next } as any)
         }
-        const pool = settings().backend === "invidious" ? INVIDIOUS_INSTANCES : PIPED_INSTANCES
-        const idx = pool.indexOf(row)
-        if (idx >= 0) {
-          const next = pool[(idx + 1) % pool.length]!
-          const field = settings().backend === "invidious" ? "invidious_instance" : "piped_instance"
-          setSettings({ ...settings(), [field]: next } as any)
-          saveConf()
-          return
-        }
+        saveConf()
+      }
+      if (e.name === "left") return cycle(-1)
+      if (e.name === "right") return cycle(1)
+      if (e.name === "return" || e.name === "space") {
         if (row === "results_count") {
           setEditing("results_count")
-          setEditBuf(String((settings() as any).results_count))
+          setEditBuf(String(settings().results_count))
+        } else {
+          return cycle(1)
         }
       }
       return
@@ -265,15 +279,21 @@ const Chrome: Component<{ title: string }> = (props) => (
   </box>
 )
 
-function homeKeys(e: { name: string }) {
+function homeKeys(e: { name: string; preventDefault(): void }) {
   if (inputMode()) {
     if (e.name === "return") return void doSearch(query())
-    if (e.name === "/") return setInputMode(false) // / from focused input -> quick access
+    if (e.name === "/") {
+      e.preventDefault() // toggle key must not land in the search field
+      return setInputMode(false)
+    }
     return // input owns the other keys; its onKeyDown handles escape
   }
   if (e.name === "up" || e.name === "k") return setQuickIndex((i) => (i + QUICK.length - 1) % QUICK.length)
   if (e.name === "down" || e.name === "j") return setQuickIndex((i) => (i + 1) % QUICK.length)
-  if (e.name === "/") return setInputMode(true)
+  if (e.name === "/") {
+    e.preventDefault() // focus change key must not be inserted into the input
+    return setInputMode(true)
+  }
   if (e.name === "return" || e.name === "space") {
     const item = QUICK[quickIndex()]!
     // playlists/subscriptions are visual-only for now: no navigation either
@@ -282,19 +302,13 @@ function homeKeys(e: { name: string }) {
     if (item === "history") {
       setStore(history)
       setStoreIndex(0)
+      void updateDescription(history.items[0])
       return setScreen("history")
     }
   }
 }
 
 // --- screens ------------------------------------------------------------------------
-function settingsRows(): string[] {
-  const s = settings()
-  if (s.backend === "yt-dlp") return [...SETTINGS_KEYS]
-  const pool = s.backend === "invidious" ? INVIDIOUS_INSTANCES : PIPED_INSTANCES
-  return ["backend", ...pool]
-}
-
 function Home() {
   return (
     <box flexGrow={1} backgroundColor={theme.bg} justifyContent="center" alignItems="center">
@@ -416,8 +430,8 @@ const Sidebar: Component = () => {
               <Span fg={theme.muted}>Upload Date: </Span>
               <Span fg={theme.fg}>{v()!.date}</Span>
             </text>
-            <Show when={v()!.description}>
-              {() => <text fg={theme.faint}>{v()!.description.slice(0, 200)}</text>}
+            <Show when={sidebarDesc() ?? ""}>
+              {() => <text fg={theme.faint}>{(sidebarDesc() ?? "").slice(0, 200)}</text>}
             </Show>
           </>
         )}
@@ -427,31 +441,19 @@ const Sidebar: Component = () => {
 }
 
 function Settings() {
-  const rows = () => settingsRows()
+  const rows = SETTINGS_KEYS
   return (
     <box flexGrow={1} paddingLeft={2} paddingTop={1}>
-      <For each={rows()}>
+      <For each={rows}>
         {(row, i) => {
           const focused = () => i() === sRow()
-          const isBackend = () => row === "backend"
-          const isCount = () => row === "results_count"
-          const isEditing = (row: string) => editing() === row
-          const value = () => (isBackend() || isCount() ? String((settings() as any)[row]) : row)
           return (
             <box height={1}>
               <text>
                 <Span fg={focused() ? theme.accent : theme.selectionBg}>{focused() ? " ▸ " : "   "}</Span>
                 <Span fg={focused() ? theme.selectionFg : theme.muted}>{row} = </Span>
-                <Show when={!isEditing(row)}>
-                  <Span fg={focused() ? theme.selectionFg : theme.fg}>{value()}</Span>
-                </Show>
-                <Show when={editing() === row}>
-                  {() => (
-                    <>
-                      <Span fg={theme.selectionFg}>editing: </Span>
-                      <Span fg={theme.fg}>{editBuf()}</Span>
-                    </>
-                  )}
+                <Show when={editing() !== row} fallback={<Span fg={theme.accent}>{editBuf()}█</Span>}>
+                  <Span fg={focused() ? theme.selectionFg : theme.fg}>{String((settings() as any)[row])}</Span>
                 </Show>
               </text>
             </box>
@@ -459,11 +461,7 @@ function Settings() {
         }}
       </For>
       <box height={1} />
-      <text fg={theme.faint}>
-        {settings().backend === "yt-dlp"
-          ? "↑↓ move · enter: backend/instance/count · esc back"
-          : "↑↓ move · enter: cycle instance · esc back"}
-      </text>
+      <text fg={theme.faint}>↑↓ move · ↔ cycle · enter edit · esc back</text>
     </box>
   )
 }

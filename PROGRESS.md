@@ -5,7 +5,7 @@
 
 ## status
 - Phase 1 (scaffold, homescreen): DONE — ascii title, search box, quick access menu.
-- Phase 2 (search + list + sidebar + playback wiring): DONE & verified live — yt-dlp search → results frame; mpv wired.
+- Phase 2 (search + list + sidebar + playback wiring): DONE & verified live — yt-dlp/invidious/piped search → results frame; mpv wired.
 - Phase 3 (quick access): PARTIAL — history + settings work; playlists/subscriptions visual-only (user decision).
 
 ## next moves
@@ -25,3 +25,10 @@
 - Playlists/subscriptions quick-access rows click NOTHING for now (visual only).
 - History + settings only functional; playback + history writes still wired.
 - yt-x sidebar parity: drop `--flat-playlist` (strips upload_date), map `description`.
+- Backend pools: invidious now points at live `yt.chocolatemoo53.com`; user conf updated likewise.
+
+## bugs
+- `/` key now matches parsed key name `\"\"` to toggle search/quick.
+- `/` key still appends `/` to search field.
+- Sidebar description not showing.
+- Settings editing: cursor missing, backspace doesn't work.

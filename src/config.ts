@@ -15,17 +15,15 @@ export interface Video {
 
 // --- settings (.conf) -------------------------------------------------------
 export interface Settings {
-  backend: "yt-dlp" | "invidious" | "piped"
+  backend: "yt-dlp" | "invidious"
   results_count: number
   invidious_instance: string
-  piped_instance: string
 }
 
 const DEFAULTS: Settings = {
   backend: "yt-dlp",
   results_count: 25,
   invidious_instance: "https://yt.chocolatemoo53.com",
-  piped_instance: "https://pipedapi.kavin.rocks",
 }
 
 export const [settings, setSettings] = createSignal<Settings>(DEFAULTS)
@@ -46,7 +44,13 @@ function parseConf(text: string): Record<string, string> {
 export function loadSettings() {
   try {
     const conf = parseConf(readFileSync(`${CONFIG_DIR}/opentube.conf`, "utf-8"))
-    setSettings({ ...DEFAULTS, ...conf, results_count: Number(conf.results_count ?? DEFAULTS.results_count) } as Settings)
+    setSettings({
+      ...DEFAULTS,
+      ...conf,
+      // piped was removed; migrate stale confs back to the default backend
+      backend: conf.backend === "invidious" ? "invidious" : DEFAULTS.backend,
+      results_count: Number(conf.results_count ?? DEFAULTS.results_count),
+    } as Settings)
   } catch {
     // no conf yet -> defaults
   }
@@ -62,7 +66,6 @@ export function saveConf() {
       `backend = ${s.backend}`,
       `results_count = ${s.results_count}`,
       `invidious_instance = ${s.invidious_instance}`,
-      `piped_instance = ${s.piped_instance}`,
     ].join("\n") + "\n",
   )
 }
