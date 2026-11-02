@@ -283,7 +283,7 @@ function Home() {
         />
       </box>
       <box height={2} />
-      <box width="40%" alignSelf="flex-start" marginLeft={1}>
+      <box width="62%" maxWidth={72} alignSelf="center" paddingLeft={2}>
         <For each={QUICK}>
           {(item, i) => {
             const active = () => i() === quickIndex() && !inputMode()
