@@ -434,6 +434,14 @@ export const App: Component = () => {
         setScreen("home")
         setInputMode(false) // esc focuses the quick access menu; / returns focus to the searchbox
         return
+      case "/":
+        // edit the current query: home (searchbox focused) with the query intact
+        if (screen() === "results") {
+          setScreen("home")
+          setInputMode(true)
+          return
+        }
+        return
       case "up":
       case "k":
         return moveSelection(-1)
@@ -510,7 +518,7 @@ const NonHomeScreens: Component = () => (
     <Chrome title={screen() === "results" ? `search › ${query()}` : screen() === "nowplaying" ? `now playing › ${npVideo?.title ?? ""}` : (screen() as string)} />
     {screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" || screen() === "playlists" ? <StoreScreen /> : screen() === "nowplaying" ? <NowPlaying /> : <box flexGrow={1} />}
     <box height={1} paddingLeft={2} backgroundColor={theme.bg}>
-      <text fg={theme.faint}>{screen() === "nowplaying" ? `${HINTS} · r loop · m mute` : HINTS}</text>
+      <text fg={theme.faint}>{screen() === "results" ? `${HINTS} · / edit` : screen() === "nowplaying" ? `${HINTS} · r loop · m mute` : HINTS}</text>
     </box>
   </box>
 )
