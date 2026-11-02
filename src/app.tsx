@@ -269,12 +269,12 @@ const Chrome: Component<{ title: string }> = (props) => (
 function homeKeys(e: { name: string }) {
   if (inputMode()) {
     if (e.name === "return") return void doSearch(query())
-    if (e.name === "slash") return setInputMode(false) // / from focused input -> quick access
+    if (e.name === "/") return setInputMode(false) // / from focused input -> quick access
     return // input owns the other keys; its onKeyDown handles escape
   }
   if (e.name === "up" || e.name === "k") return setQuickIndex((i) => (i + QUICK.length - 1) % QUICK.length)
   if (e.name === "down" || e.name === "j") return setQuickIndex((i) => (i + 1) % QUICK.length)
-  if (e.name === "slash") return setInputMode(true)
+  if (e.name === "/") return setInputMode(true)
   if (e.name === "return" || e.name === "space") {
     const item = QUICK[quickIndex()]!
     // playlists/subscriptions are visual-only for now: no navigation either
