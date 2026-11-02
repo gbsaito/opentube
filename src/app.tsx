@@ -588,9 +588,9 @@ const Sidebar: Component = () => {
     return "auto"
   }
   return (
-    <box width={44} flexDirection="column" paddingLeft={1} paddingTop={1}>
+    <box width={44} flexDirection="column" paddingLeft={1} paddingTop={1} gap={1}>
       <Show when={imageOn()}>
-        <box height={13} justifyContent="center" alignItems="center">
+        <box height={13} justifyContent="center" alignItems="center" paddingLeft={2}>
           <Show when={thumb()} fallback={<text fg={theme.faint}>...</text>}>
             {() => <image source={thumb()!} fit="fit" width={42} height={12} protocol={renderProtocol()} />}
           </Show>
@@ -670,5 +670,5 @@ function Settings() {
 
 export function mountApp() {
   loadSettings()
-  render(() => <App />)
+  render(() => <App />, { useMouse: true })
 }
