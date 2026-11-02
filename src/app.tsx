@@ -449,7 +449,7 @@ const NowPlaying: Component = () => {
     return `${"█".repeat(filled)}${"░".repeat(30 - filled)}`
   }
   return (
-    <box backgroundColor={theme.bg} flexDirection="column" justifyContent="center" alignItems="center">
+    <box flexGrow={1} backgroundColor={theme.bg} flexDirection="column" justifyContent="center" alignItems="center">
       <text fg={theme.accent} textAlign="center">Now Playing</text>
       <box height={1} />
       <text fg={theme.fg} textAlign="center">{v?.title ?? ""}</text>
