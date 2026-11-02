@@ -17,8 +17,8 @@ import {
   type Video,
   type Settings,
 } from "./config"
-import { searchVideos, searchMoreVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
-import { play } from "./player"
+  import { searchVideos, searchMoreVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
+  import { play } from "./player"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
 const Span: Component<any> = (props) => <span {...props} />
@@ -29,7 +29,7 @@ type Screen = "home" | "results" | "history" | "playlists" | "subscriptions" | "
 const fmtViews = (s: string) => (/^\d+$/.test(s) ? Number(s).toLocaleString("en-US") : s)
 
 const QUICK: string[] = ["history", "playlists", "subscriptions", "settings", "quit"]
-const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews"]
+const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews", "title_font"]
 const INVIDIOUS_INSTANCES: string[] = [
   "https://yt.chocolatemoo53.com",
   "https://inv.nadeko.net",
@@ -148,7 +148,7 @@ function localFocus(): number {
 // UI zoom (0.5–2), ctrl+wheel steps 0.25; scales the sidebar layout
 const [zoomLevel, setZoomLevel] = createSignal(1)
 
-// mouse: hover/drag over a row selects it, double-click interacts (plays)
+// mouse: hovering a row selects it, double-click interacts (plays)
 let lastClick = { id: "", at: 0 }
 function hoverSelect(local: number, v: Video | undefined) {
   if (!v || screen() === "home" || screen() === "settings" || screen() === "nowplaying") return
@@ -349,6 +349,10 @@ export const App: Component = () => {
           const idx = RENDERER_LIST.indexOf(s.image_renderer)
           const next = RENDERER_LIST[(idx + dir + RENDERER_LIST.length) % RENDERER_LIST.length]!
           setSettings({ ...settings(), image_renderer: next } as any)
+        } else if (row === "title_font") {
+          const idx = TITLE_FONTS.indexOf(s.title_font)
+          const next = TITLE_FONTS[(idx + dir + TITLE_FONTS.length) % TITLE_FONTS.length]!
+          setSettings({ ...settings(), title_font: next } as any)
         } else if (row === "invidious_instance") {
           const idx = INVIDIOUS_INSTANCES.indexOf(settings().invidious_instance)
           const next = idx < 0 ? (dir < 0 ? INVIDIOUS_INSTANCES.length - 1 : 0) : INVIDIOUS_INSTANCES[(idx + dir + INVIDIOUS_INSTANCES.length) % INVIDIOUS_INSTANCES.length]!
@@ -522,7 +526,7 @@ function Home() {
   return (
     <box flexGrow={1} backgroundColor={theme.bg} justifyContent="center" alignItems="center">
       <box height={1} />
-      <ascii_font text="opentube" font="block" color={theme.accent} />
+      <ascii_font text="opentube" font={settings().title_font} color={theme.accent} />
       <box height={2} />
       <box
         width="62%"

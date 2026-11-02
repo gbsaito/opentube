@@ -22,6 +22,7 @@ export interface Settings {
   previews: boolean // info sidebar
   image_previews: boolean // thumbnail
   image_renderer: "auto" | "icat" | "sixel" | "chafa"
+  title_font: "tiny" | "block" | "shade" | "slick" | "huge" | "grid" | "pallet"
 }
 
 const DEFAULTS: Settings = {
@@ -31,9 +32,12 @@ const DEFAULTS: Settings = {
   previews: true,
   image_previews: true,
   image_renderer: "auto",
+  title_font: "block",
 }
 
 const RENDERERS: readonly Settings["image_renderer"][] = ["auto", "icat", "sixel", "chafa"]
+const FONTS: readonly Settings["title_font"][] = ["tiny", "block", "shade", "slick", "huge", "grid", "pallet"]
+export const TITLE_FONTS = FONTS
 
 export const [settings, setSettings] = createSignal<Settings>(DEFAULTS)
 
@@ -57,6 +61,7 @@ export function loadSettings() {
     const previews = conf.previews !== undefined ? conf.previews === "true" : DEFAULTS.previews
     const imagePreviews = conf["image_previews"] !== undefined ? conf["image_previews"] === "true" : DEFAULTS.image_previews
     const imageRenderer = RENDERERS.includes(conf["image_renderer"] as Settings["image_renderer"]) ? (conf["image_renderer"] as Settings["image_renderer"]) : DEFAULTS.image_renderer
+    const titleFont = FONTS.includes(conf["title_font"] as Settings["title_font"]) ? (conf["title_font"] as Settings["title_font"]) : DEFAULTS.title_font
     setSettings({
       ...DEFAULTS,
       backend,
@@ -65,6 +70,7 @@ export function loadSettings() {
       previews,
       image_previews: imagePreviews,
       image_renderer: imageRenderer,
+      title_font: titleFont,
     } as Settings)
   } catch {
     // no conf yet -> defaults
@@ -84,6 +90,7 @@ export function saveConf() {
       `previews = ${s.previews}`,
       `image_previews = ${s.image_previews}`,
       `image_renderer = ${s.image_renderer}`,
+      `title_font = ${s.title_font}`,
     ].join("\n") + "\n",
   )
 }
