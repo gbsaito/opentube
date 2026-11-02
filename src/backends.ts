@@ -8,7 +8,7 @@ const PIPED = ["https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de",
 
 // --- yt-dlp ---------------------------------------------------------------------
 async function viaYtDlp(query: string): Promise<Video[]> {
-  const proc = Bun.spawn(["yt-dlp", "--flat-playlist", "--dump-json", `ytsearch${settings().results_count}:${query}`], {
+  const proc = Bun.spawn(["yt-dlp", "--dump-json", `ytsearch${settings().results_count}:${query}`], {
     stdout: "pipe",
     stderr: "ignore",
   })
@@ -22,7 +22,7 @@ async function viaYtDlp(query: string): Promise<Video[]> {
       title: e.title,
       channel: e.uploader ?? "",
       date: e.upload_date ? `${e.upload_date.slice(0, 4)}-${e.upload_date.slice(4, 6)}-${e.upload_date.slice(6, 8)}` : "",
-      description: "",
+      description: clean(e.description ?? e.full_description ?? ""),
       duration: e.duration ? fmtDuration(e.duration) : "",
     }))
 }
