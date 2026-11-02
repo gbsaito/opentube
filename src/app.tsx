@@ -99,7 +99,8 @@ let thumbUrl = ""
 const thumbCache = new Map<string, Uint8Array>()
 
 function thumbUrlOf(v: Video | undefined): string {
-  return v ? `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg` : ""
+  // mqdefault is 16:9 no-letterbox; hqdefault ships youtube's black bars
+  return v ? `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg` : ""
 }
 
 async function updateThumb(v: Video | undefined) {
