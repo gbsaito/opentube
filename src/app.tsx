@@ -510,12 +510,6 @@ const Chrome: Component<{ title: string }> = (props) => (
 
 function homeKeys(e: { name: string; preventDefault(): void }) {
   if (inputMode()) {
-    // unfocus explicitly here too: the <input>'s own onKeyDown isn't the only path, and a
-    // terminal that delivers escape late or with modifiers must still blur the box
-    if (e.name === "escape" || e.name === "down") {
-      e.preventDefault()
-      return setInputMode(false)
-    }
     if (e.name === "return") return void doSearch(query())
     if (e.name === "/") {
       e.preventDefault() // toggle key must not land in the search field
