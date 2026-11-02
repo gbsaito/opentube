@@ -152,8 +152,11 @@ async function quitApp() {
   process.exit(0)
 }
 
+let lastSearch = { q: "", at: 0 }
 async function doSearch(q: string) {
   if (!q.trim()) return
+  if (q === lastSearch.q && Date.now() - lastSearch.at < 400) return // double delivery (input submit + global keyhook)
+  lastSearch = { q, at: Date.now() }
   setQuery(q)
   setScreen("results")
   setPage(0)
@@ -333,7 +336,7 @@ export const App: Component = () => {
     switch (e.name) {
       case "escape":
         setScreen("home")
-        setInputMode(true)
+        setInputMode(false) // esc focuses the quick access menu; / returns focus to the searchbox
         return
       case "up":
       case "k":
@@ -432,13 +435,16 @@ const Chrome: Component<{ title: string }> = (props) => (
 )
 
 function homeKeys(e: { name: string; preventDefault(): void }) {
+  // terminal key-name variants for Enter all mean submit
+  const name = e.name === "kpenter" || e.name === "enter" || e.name === "linefeed" ? "return" : e.name
   if (inputMode()) {
-    if (e.name === "return") return void doSearch(query())
-    if (e.name === "/") {
+    if (name === "escape" || name === "down") return setInputMode(false)
+    if (name === "return") return void doSearch(query())
+    if (name === "/") {
       e.preventDefault() // toggle key must not land in the search field
       return setInputMode(false)
     }
-    return // input owns the other keys; its onKeyDown handles escape
+    return // input owns the other keys; its own handler already blurs on escape
   }
   if (e.name === "up" || e.name === "k") return setQuickIndex((i) => (i + QUICK.length - 1) % QUICK.length)
   if (e.name === "down" || e.name === "j") return setQuickIndex((i) => (i + 1) % QUICK.length)

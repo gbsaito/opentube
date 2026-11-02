@@ -4,7 +4,8 @@
 - [ ] Build OpenTube TUI app per PLAN.md (phases 1-3 done; phase 4 auth optional)
 
 ## status
-- REVERTED at user request (d484e05, a4ce719) two commits back, tree == commit f08a79c: mouse support, wheel-zoom, follow-ups, plus 159add0 sidebar-thumbnail centering. Git history preserved.
+- REVERTED at user request (d484e05, a4ce719) two commits back, tree == commit f08a79c: mouse support, wheel-zoom, follow-ups, plus 159add0 sidebar-thumbnail centering. Git history preserved. (A stale bun process pid 45614 running old code had caused every keyboard symptom — killed.)
+- Searchbox focus semantics (user request): enter submits search (any Enter key-name variant: return/kpenter/enter/linefeed, deduped against double delivery), esc (any screen) returns home focused on quick-access menu, / (from menu) returns focus to searchbox. Blur works from raw ESC and kitty CSI 27u / 27;1u. InputRenderable natively submits on "return" and the global hook handles everything else; `onKeyDown` is not a real prop of @opentui/solid input.
 - Phase 1 (scaffold, homescreen): DONE — ascii title, search box, quick access menu.
 - Phase 2 (search + list + sidebar + playback wiring): DONE & verified live.
 - Phase 3 (quick access): DONE — history + settings functional; playlists/subscriptions visual-only (user decision).
