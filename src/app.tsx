@@ -266,7 +266,7 @@ function Home() {
       <box height={1} />
       <ascii_font text="opentube" font="block" color={theme.accent} />
       <box height={2} />
-      <box width="62%" maxWidth={72} border={["left"]} borderStyle="single" borderColor={theme.accentDim} backgroundColor={theme.inputBg}>
+      <box width="62%" maxWidth={72} padding={1} border={["left"]} borderStyle="single" borderColor={theme.accentDim} backgroundColor={theme.inputBg}>
         <input
           placeholder=" search youtube…"
           placeholderColor={theme.faint}
@@ -283,7 +283,7 @@ function Home() {
         />
       </box>
       <box height={2} />
-      <box width="30%" alignSelf="center">
+      <box width="40%" alignSelf="flex-start" marginLeft={1}>
         <For each={QUICK}>
           {(item, i) => {
             const active = () => i() === quickIndex() && !inputMode()
