@@ -15,13 +15,16 @@ import {
   type Store,
   type Video,
 } from "./config"
-import { searchVideos, videoMeta, ERR_MSG, type BackendKey } from "./backends"
+import { searchVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
 import { play } from "./player"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
 const Span: Component<any> = (props) => <span {...props} />
 
 type Screen = "home" | "results" | "history" | "playlists" | "subscriptions" | "settings"
+
+// 1234567 -> "1,234,567"; non-numeric strings pass through
+const fmtViews = (s: string) => (/^\d+$/.test(s) ? Number(s).toLocaleString("en-US") : s)
 
 const QUICK: string[] = ["history", "playlists", "subscriptions", "settings", "quit"]
 const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count"]
@@ -67,8 +70,8 @@ function commitEdit() {
   setEditing(null)
 }
 
-// lazy per-selection metadata fill: invidious rows lack description, yt-dlp flat rows lack date
-const [sidebarMeta, setSidebarMeta] = createSignal<{ date: string; description: string } | null>(null)
+// lazy per-selection metadata fill: invidious rows lack description, yt-dlp flat rows lack date/views
+const [sidebarMeta, setSidebarMeta] = createSignal<VideoMeta | null>(null)
 let metaId = ""
 async function updateMeta(v: Video | undefined) {
   const id = v?.id
@@ -76,7 +79,7 @@ async function updateMeta(v: Video | undefined) {
     metaId = ""
     return setSidebarMeta(null)
   }
-  if (metaId === id || (v.description && v.date)) return // nothing to fill
+  if (metaId === id || (v.description && v.date && v.views)) return // nothing to fill
   metaId = id
   setSidebarMeta(null)
   const m = await videoMeta(id)
@@ -160,17 +163,23 @@ function playCurrent(mode: "video" | "audio") {
   const v = currentVideo()
   if (!v) return
   play(v, mode)
-  history.add(v)
+  history.add(withMeta(v))
 }
 
 function subscribeCurrent() {
   const v = currentVideo()
   if (!v?.channel) return
-  subscriptions.add({ ...v, id: v.channel, title: v.channel, description: "" })
+  subscriptions.add({ ...withMeta(v), id: v.channel, title: v.channel, description: "" })
 }
+/** fill missing fields (date/description/views) from already-fetched session cache, so history rows render instantly */
+function withMeta(v: Video): Video {
+  const m = cachedMeta(v.id)
+  return m ? { ...v, description: v.description || m.description, date: v.date || m.date, views: v.views || m.views } : v
+}
+
 function likeCurrent() {
   const v = currentVideo()
-  if (v) playlists.add(v)
+  if (v) playlists.add(withMeta(v))
 }
 function deleteCurrent() {
   const v = currentVideo()
@@ -432,6 +441,10 @@ const Sidebar: Component = () => {
             <text>
               <Span fg={theme.muted}>Upload Date: </Span>
               <Span fg={theme.fg}>{v()!.date || sidebarMeta()?.date || ""}</Span>
+            </text>
+            <text>
+              <Span fg={theme.muted}>Views: </Span>
+              <Span fg={theme.fg}>{fmtViews(v()!.views || sidebarMeta()?.views || "")}</Span>
             </text>
             <Show when={v()!.description || sidebarMeta()?.description}>
               {() => <text fg={theme.faint}>{(v()!.description || sidebarMeta()?.description || "").slice(0, 200)}</text>}

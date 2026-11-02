@@ -10,6 +10,7 @@ export interface Video {
   date: string
   description: string
   duration?: string
+  views?: string
   watchedAt?: number // history entries only
 }
 

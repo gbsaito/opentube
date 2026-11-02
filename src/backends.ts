@@ -39,6 +39,7 @@ async function viaInvidious(query: string): Promise<Video[]> {
     date: v.publishedText ?? "",
     description: clean(v.description),
     duration: v.lengthSeconds > 0 ? fmtDuration(v.lengthSeconds) : "",
+    views: String(v.viewCount ?? ""),
   }))
 }
 
@@ -96,23 +97,43 @@ export function searchVideos(query: string): Promise<Video[]> {
 }
 
 // ponytail: ceiling is one request per selected video; upgrade to prefetch of neighbors when scroll feels sluggish
-const metaCache = new Map<string, { description: string; date: string }>()
-/** lazy per-video metadata: invidious search rows ship no description, yt-dlp flat rows no upload date */
-export async function videoMeta(id: string): Promise<{ description: string; date: string }> {
+export interface VideoMeta {
+  description: string
+  date: string
+  views: string
+}
+
+const metaCache = new Map<string, VideoMeta>()
+/** meta already fetched this session (no network) */
+export function cachedMeta(id: string): VideoMeta | undefined {
+  return metaCache.get(id)
+}
+
+/** race all candidates, first success wins — dead instances no longer stall the response */
+async function firstJson<T>(urls: string[]): Promise<T | null> {
+  try {
+    return await Promise.any(
+      urls.map(async (u) => {
+        const res = await fetch(u, { signal: AbortSignal.timeout(5000) })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return (await res.json()) as T
+      }),
+    )
+  } catch {
+    return null
+  }
+}
+
+/** lazy per-video metadata: invidious search rows ship no description, yt-dlp flat rows no date/views */
+export async function videoMeta(id: string): Promise<VideoMeta> {
   const hit = metaCache.get(id)
   if (hit) return hit
-  const empty = { description: "", date: "" }
+  const empty: VideoMeta = { description: "", date: "", views: "" }
   const urls = candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/videos/${id}`)
-  let meta = empty
-  for (const u of urls) {
-    try {
-      const j = (await getJson<any>(u)) as any
-      meta = { description: clean(String(j.description ?? j.descriptionHtml ?? "")), date: j.publishedText ?? "" }
-      break
-    } catch {
-      // try next instance
-    }
-  }
+  const j = await firstJson<any>(urls)
+  const meta: VideoMeta = j
+    ? { description: clean(String(j.description ?? j.descriptionHtml ?? "")), date: j.publishedText ?? "", views: String(j.viewCount ?? "") }
+    : empty
   metaCache.set(id, meta)
   return meta
 }
