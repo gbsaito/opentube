@@ -5,10 +5,7 @@ TUI YouTube client built with bun + @opentui/solid + mpv.
 ## install
 
 ```sh
-curl -fsSL https://bun.sh/install | bash
-git clone https://github.com/gbsaito/opentube.git
-cd opentube
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/gbsaito/opentube/master/install.sh | sh
 ```
 
 manual alternative:
