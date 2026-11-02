@@ -165,8 +165,10 @@ async function doSearch(q: string) {
   setLoading(true)
   setError("")
   setSel(0)
+  setVideos([]) // drop stale rows from previous searches immediately
   try {
     setVideos(await searchVideos(q))
+    void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
     void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
   } catch (e) {
     setVideos([])
@@ -597,7 +599,7 @@ const Sidebar: Component = () => {
   }
   return (
     <box width={44} flexDirection="column" paddingLeft={1} paddingTop={1}>
-      <Show when={imageOn()}>
+      <Show when={infoOn() && imageOn()}>
         <box height={13} justifyContent="center" alignItems="center">
           <Show when={thumb()} fallback={<text fg={theme.faint}>...</text>}>
             {() => <image source={thumb()!} fit="fit" width={42} height={12} protocol={renderProtocol()} />}
