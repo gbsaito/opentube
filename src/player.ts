@@ -15,13 +15,27 @@ let paused = false
 // live playback position/total reported to the now-playing screen
 export const [npTime, setNpTime] = createSignal(0)
 export const [npDur, setNpDur] = createSignal(0)
+export const [npLoop, setNpLoop] = createSignal(false)
+export const [npPaused, setNpPaused] = createSignal(false)
+export const [npMuted, setNpMuted] = createSignal(false)
 
 export function isPaused() {
   return paused
 }
 export function togglePause() {
   paused = !paused
+  setNpPaused(paused)
   void sendCommand(["set_property", "pause", paused])
+}
+export function toggleLoop() {
+  const on = !npLoop()
+  setNpLoop(on)
+  void sendCommand(["set_property", "loop", on ? "inf" : "no"])
+}
+export function toggleMute() {
+  const on = !npMuted()
+  setNpMuted(on)
+  void sendCommand(["set_property", "mute", on ? "yes" : "no"])
 }
 export function seekTo(sec: number) {
   void sendCommand(["seek", sec, "absolute"])
@@ -114,6 +128,9 @@ async function poll() {
 export function play(v: Video, mode: "video" | "audio") {
   stopCurrent()
   paused = false
+  setNpPaused(false)
+  setNpLoop(false)
+  setNpMuted(false)
   resetProgress()
   socketPath = `/tmp/opentube-mpv-${Date.now()}.sock`
   const args = mode === "audio" ? ["--no-video"] : ["--ytdl-format=bestvideo+bestaudio/best"]

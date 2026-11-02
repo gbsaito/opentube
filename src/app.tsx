@@ -20,7 +20,7 @@ import {
   ACCENT_COLORS,
 } from "./config"
 import { searchVideos, searchMoreVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
-import { play, npTime, npDur, stopPlayback, togglePause, seekTo } from "./player"
+import { play, npTime, npDur, npLoop, npPaused, npMuted, stopPlayback, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
 const Span: Component<any> = (props) => <span {...props} />
@@ -414,6 +414,14 @@ export const App: Component = () => {
         togglePause()
         return
       }
+      if (e.name === "r" || e.name === "R") {
+        void toggleLoop()
+        return
+      }
+      if (e.name === "m" || e.name === "M") {
+        void toggleMute()
+        return
+      }
       if (e.name === "left" || e.name === "right") {
         seekTo(npTime() + (e.name === "right" ? 10 : -10))
         return
@@ -477,7 +485,6 @@ const NowPlaying: Component = () => {
   return (
     <box flexGrow={1} backgroundColor={theme.bg} flexDirection="column" justifyContent="center" alignItems="center">
       <text fg={settings().accent} textAlign="center">Now Playing</text>
-      <box height={1} />
       <text fg={theme.fg} textAlign="center">{v?.title ?? ""}</text>
       <box height={2} />
       <box width={30} height={1}>
@@ -485,6 +492,14 @@ const NowPlaying: Component = () => {
       </box>
       <box height={1} />
       <text fg={theme.faint}>{fmt(npTime())} / {fmt(npDur())}</text>
+      <box height={1} />
+      <Show when={npLoop() || npPaused() || npMuted()}>
+        {() => (
+          <text fg={theme.accent}>
+            {[npLoop() ? "⟳ loop" : "", npPaused() ? "⏸ paused" : "", npMuted() ? "🔇 muted" : ""].filter(Boolean).join(" · ")}
+          </text>
+        )}
+      </Show>
       <box height={2} />
     </box>
   )
@@ -495,7 +510,7 @@ const NonHomeScreens: Component = () => (
     <Chrome title={screen() === "results" ? `search › ${query()}` : screen() === "nowplaying" ? `now playing › ${npVideo?.title ?? ""}` : (screen() as string)} />
     {screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" || screen() === "playlists" ? <StoreScreen /> : screen() === "nowplaying" ? <NowPlaying /> : <box flexGrow={1} />}
     <box height={1} paddingLeft={2} backgroundColor={theme.bg}>
-      <text fg={theme.faint}>{HINTS}</text>
+      <text fg={theme.faint}>{screen() === "nowplaying" ? `${HINTS} · r loop · m mute` : HINTS}</text>
     </box>
   </box>
 )
