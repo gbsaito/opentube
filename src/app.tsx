@@ -308,12 +308,16 @@ export const App: Component = () => {
     return true
   }
 
-  // global mouse: wheel = zoom, left = click/drag select, right = page forward
+  // global mouse: scroll navigates, ctrl+scroll zooms, left = click/drag select, right = page forward
   renderer.root.onMouse = (e) => {
     if (e.type === "scroll") {
-      if (e.scroll?.direction === "up") handleZoom(1)
-      else if (e.scroll?.direction === "down") handleZoom(-1)
-      return
+      const dir = e.scroll?.direction === "up" ? -1 : 1
+      if (e.modifiers?.ctrl) return handleZoom(-dir)
+      if (screen() === "home") {
+        setQuickIndex((i) => (i + dir + QUICK.length) % QUICK.length)
+        return setInputMode(false)
+      }
+      return moveSelection(-dir)
     }
     if (e.button === 2) {
       if (e.type === "down" && screen() !== "home") void goPage(1)
