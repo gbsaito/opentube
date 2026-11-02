@@ -1,7 +1,9 @@
 # progress
 
 ## current task
-- [ ] Fix descriptions not showing (regression)
+- [x] Fix descriptions not showing (regression)
+- [x] Fix tabs/keys dead when launcher runs outside repo cwd (preload gap)
+
 
 ## status
 - Description regression ROOT CAUSE (fix in src/backends.ts): NOT a UI bug — invidious instances now serve `description: ""` (chocolatemoo 200+empty, nadeko "Endpoint disabled" 403, nerdvpn.de dead/hangs >12s) and videoMeta cached the empty result forever (unconditional metaCache.set), so every video showed no description. Fix: after the invidious race, when description is empty, fall back to yt-dlp (`--dump-json` watch URL) for description/date/views; failed/empty meta is no longer cached (retryable). Verified live in a pty: sidebar for "Adele - Hello" shows Channel/Upload Date/Views + full description text ("Listen to Easy On Me ..." etc).
@@ -17,6 +19,10 @@
 - NowPlaying fix (84b1818, user report): root box now flexGrow={1} in column flex container → justifyContent center works; was not centered / broke with zoom.
 - Opencode custom title font investigated: NOT an @opentui ASCIIFont font — hand-drawn block-letter art (█/_/^/~/,) strings in packages/tui/src/logo.ts + per-char <text> render with tinted shadow bg; bold via TextAttributes.BOLD; width-based layout (go / go.right / split / side-by-side).
 - KEYBOARD ROOT CAUSE FOUND: kitty 0.49.2 delivered ZERO keyboard events to the app (empty keys log while running the instrumented build). Fix: launcher (bin/opentube.ts) attaches a flowing-mode stdin data listener BEFORE opentui mounts — keys now flow; raw/key logging kept opt-in via OTUI_DEBUG=1 to /tmp/opentube-raw.log and /tmp/opentube-keys.log (capped by user's bisect confirmation at commit f02170b in opentube-test).
+  - SUPERSEDED (2026-11-02, real root cause): the stdin listener was not the fix and mouse/encoding were never the wedge. The actual hole: bun reads `bunfig.toml` ONLY from the current directory. Repo's bunfig has `preload = ["@opentui/solid/preload"]`, which installs a bun plugin that swaps solid-js `dist/server.js` -> client build (`onMount` real). Launching `opentube` from `~` via the `~/.local/bin/opentube` symlink = no bunfig = no preload = solid SERVER build inside opentui = `useKeyboard`'s onMount is a noop = zero key events, forever, in any terminal. Probe runs from the repo cwd always had bunfig, which is why keys "worked from repo dir, dead from ~".
+  - Fix applied (cwd-proof, mirrors opentube-beta commit 14fe213): `bin/opentube.ts` now `import "@opentui/solid/preload"` AND loads the app with a DYNAMIC `await import("../src/app")` — bun transpiles the whole static import graph eagerly, so a static import would register the plugin too late; the dynamic import defers the src/ subgraph until after the plugin is in. With bunfig + static import it worked from repo cwd before because bunfig preload ran before that graph was built.
+  - Verified: symlink launch from `~`, TERM=xterm-kitty, real-kitty boot-reply replay + exact tab bytes in a raw pty -> `/tmp/opentube-keys.log` registers `name=tab`/`name=down` (was empty before). The bin stdin-listener stays for orphan/diagnostics but is no longer load-bearing for delivery.
+
 - Searchbox focus semantics (user request): enter submits search (any Enter key-name variant: return/kpenter/enter/linefeed, deduped against double delivery), esc (any screen) returns home focused on quick-access menu, / (from menu) returns focus to searchbox. InputRenderable natively submits on "return"; `onKeyDown` is not a real prop of @opentui/solid input.
 - opentube-test copy exists at ~/Projects/opentube-test (bisect sandbox owned by saito, launcher symlink opentube-test); delete when no longer needed.
 - Phase 1 (scaffold, homescreen): DONE — ascii title, search box, quick access menu.
@@ -51,9 +57,6 @@
 - Settings editor: backspace worked (DEL char passed the printable check and got appended); added block cursor.
 - Sidebar description now shows: fetched lazily per selection.
 - yt-dlp "infinite" search: was full-metadata crawl (~90s); now fast flat rows + lazy date fill.
-
-## bugs/ongoing (session log)
-- Wedge root-cause loop 2026-11-02: raw stdin bytes reach bun (ours log) + core (OTUI_STDIN_LOG) + parse (keys log) + app handlers (screen/inputMode/query) all fine, incl. kitty CSI-u bytes (`ESC[27u`) + lump chunks. Search fired (screen home->results via 'return'), render loop alive (resize redraw / post-lump char redraw OK). Remaining suspect: render-burst on screen-transition; NOT yet fixed. User-side: frozen TUI in kitty/ghostty/alacritty.
 
 ## pending user test
 - Settings: left/right cycles backend / invidious instance; enter edits results_count (cursor + backspace).

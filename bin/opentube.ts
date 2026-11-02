@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+// cwd-proof solid client-build patch: bunfig preload only applies when cwd is
+// the repo; this ensures the transform no matter where the symlink launches.
+import "@opentui/solid/preload"
 import { appendFileSync, readlinkSync } from "fs"
 
 // kick stdin into flowing mode before opentui mounts; without this, kitty 0.49
@@ -30,6 +33,7 @@ process.stdin.on("end", () => process.exit(0))
 process.removeAllListeners?.("SIGHUP")
 process.on("SIGHUP", () => process.exit(0))
 
-import { mountApp } from "../src/app"
+// dynamic import so the solid plugin registers before this subgraph transpiles
+const { mountApp } = await import("../src/app")
 
 mountApp()
