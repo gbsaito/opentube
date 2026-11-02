@@ -24,6 +24,7 @@ export interface Settings {
   image_renderer: "auto" | "icat" | "sixel" | "chafa"
   title_font: "tiny" | "block" | "shade" | "slick" | "huge" | "grid" | "pallet"
   accent: string
+  mouse: boolean
 }
 
 const DEFAULTS: Settings = {
@@ -35,6 +36,7 @@ const DEFAULTS: Settings = {
   image_renderer: "auto",
   title_font: "block",
   accent: "#c084fc",
+  mouse: true,
 }
 
 const RENDERERS: readonly Settings["image_renderer"][] = ["auto", "icat", "sixel", "chafa"]
@@ -66,6 +68,7 @@ export function loadSettings() {
     const imageRenderer = RENDERERS.includes(conf["image_renderer"] as Settings["image_renderer"]) ? (conf["image_renderer"] as Settings["image_renderer"]) : DEFAULTS.image_renderer
     const titleFont = FONTS.includes(conf["title_font"] as Settings["title_font"]) ? (conf["title_font"] as Settings["title_font"]) : DEFAULTS.title_font
     const accent = conf.accent && ACCENT_COLORS.includes(conf.accent) ? conf.accent : DEFAULTS.accent
+    const mouse = conf["mouse"] !== undefined ? conf["mouse"] === "true" : DEFAULTS.mouse
     setSettings({
       ...DEFAULTS,
       backend,
@@ -76,6 +79,7 @@ export function loadSettings() {
       image_renderer: imageRenderer,
       title_font: titleFont,
       accent,
+      mouse,
     } as Settings)
   } catch {
     // no conf yet -> defaults
@@ -97,6 +101,7 @@ export function saveConf() {
       `image_renderer = ${s.image_renderer}`,
       `title_font = ${s.title_font}`,
       `accent = ${s.accent}`,
+      `mouse = ${s.mouse}`,
     ].join("\n") + "\n",
   )
 }

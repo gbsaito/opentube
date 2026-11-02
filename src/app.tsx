@@ -46,7 +46,7 @@ const QUICK_LABEL: Record<string, string> = {
   settings: "Settings",
   quit: "Quit",
 }
-const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews", "title_font", "accent"]
+const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews", "title_font", "accent", "mouse"]
 const INVIDIOUS_INSTANCES: string[] = [
   "https://yt.chocolatemoo53.com",
   "https://inv.nadeko.net",
@@ -379,7 +379,7 @@ export const App: Component = () => {
           const idx = INVIDIOUS_INSTANCES.indexOf(settings().invidious_instance)
           const next = idx < 0 ? (dir < 0 ? INVIDIOUS_INSTANCES.length - 1 : 0) : INVIDIOUS_INSTANCES[(idx + dir + INVIDIOUS_INSTANCES.length) % INVIDIOUS_INSTANCES.length]!
           setSettings({ ...settings(), invidious_instance: next } as any)
-        } else if (row === "previews" || row === "image_previews") {
+        } else if (row === "previews" || row === "image_previews" || row === "mouse") {
           setSettings({ ...settings(), [row]: !settings()[row] } as any)
         } else if (row === "results_count") {
           setEditing("results_count")
@@ -802,7 +802,7 @@ function Settings() {
       <For each={rows()}>
         {(row, i) => {
           const focused = () => i() === sRow()
-          const isBool = () => row === "previews" || row === "image_previews"
+          const isBool = () => row === "previews" || row === "image_previews" || row === "mouse"
           const isEditing = () => editing() === row
           const value = () => {
             const s = settings() as any
@@ -840,5 +840,5 @@ function Settings() {
 
 export function mountApp() {
   loadSettings()
-  render(() => <App />, { useMouse: true })
+  render(() => <App />, { useMouse: settings().mouse })
 }
