@@ -4,7 +4,7 @@
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "jsxImportSource": "@opentui/solid",
     "allowJs": true,
     "types": ["bun"],

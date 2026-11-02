@@ -1,3 +1,4 @@
+/** @jsxImportSource @opentui/solid */
 import { createSignal, For, Show, type Component } from "solid-js"
 import { useKeyboard, useRenderer, render } from "@opentui/solid"
 import type { CliRenderer } from "@opentui/core"
