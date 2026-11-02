@@ -42,7 +42,7 @@ const INVIDIOUS_INSTANCES: string[] = [
 ]
 const BACKEND_ORDER: BackendKey[] = ["yt-dlp", "invidious"]
 const RENDERER_LIST: readonly Settings["image_renderer"][] = ["auto", "icat", "sixel", "chafa"]
-const HINTS = "↑↓/jk move · ←→ page · enter play · p audio · s subscribe · l add playlist · d delete · q quit · esc back"
+const HINTS = "↑↓/jk move · ←→ page · enter play · p play · P audio · s subscribe · l add playlist · d delete · q quit · esc back"
 
 // --- app state -----------------------------------------------------------------
 const [screen, setScreen] = createSignal<Screen>("home")
@@ -343,6 +343,8 @@ export const App: Component = () => {
       case "return":
         return playCurrent("video")
       case "p":
+        return playCurrent("video")
+      case "P":
         return playCurrent("audio")
       case "s":
         return subscribeCurrent()
