@@ -36,7 +36,7 @@ const DEFAULTS: Settings = {
 }
 
 const RENDERERS: readonly Settings["image_renderer"][] = ["auto", "icat", "sixel", "chafa"]
-const FONTS: readonly Settings["title_font"][] = ["tiny", "block", "shade", "slick", "huge", "grid", "pallet"]
+const FONTS: readonly Settings["title_font"][] = ["tiny", "block"] // user asked: maintain only tiny/block
 export const TITLE_FONTS = FONTS
 
 export const [settings, setSettings] = createSignal<Settings>(DEFAULTS)
