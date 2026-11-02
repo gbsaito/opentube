@@ -4,7 +4,7 @@
 - [ ] Build OpenTube TUI app per PLAN.md (phases 1-3 done; phase 4 auth optional)
 
 ## status
-- REVERTED at user request (d484e05) to pre-mouse state, tree == commit 159add0: mouse support, wheel-zoom and follow-up fixes rolled back; git history preserved.
+- REVERTED at user request (d484e05, a4ce719) two commits back, tree == commit f08a79c: mouse support, wheel-zoom, follow-ups, plus 159add0 sidebar-thumbnail centering. Git history preserved.
 - Phase 1 (scaffold, homescreen): DONE — ascii title, search box, quick access menu.
 - Phase 2 (search + list + sidebar + playback wiring): DONE & verified live.
 - Phase 3 (quick access): DONE — history + settings functional; playlists/subscriptions visual-only (user decision).
