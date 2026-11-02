@@ -24,7 +24,20 @@ const Span: Component<any> = (props) => <span {...props} />
 type Screen = "home" | "results" | "history" | "playlists" | "subscriptions" | "settings"
 
 const QUICK: string[] = ["history", "playlists", "subscriptions", "settings", "quit"]
-const SETTINGS_KEYS = ["backend", "results_count", "invidious_instance", "piped_instance"] as const
+const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "piped_instance", "results_count"]
+const INVIDIOUS_INSTANCES: string[] = [
+  "https://inv.nadeko.net",
+  "https://invidious.nerdvpn.de",
+  "https://yt.chocolatemoo53.com",
+  "https://invidious.tiekoetter.com",
+  "http://inv.nadekonw7plitnjuawu6ytjsl7jlglk2t6pyq6eftptmiv3dvqndwvyd.onion",
+  "http://nerdvpneaggggfdiurknszkbmhvjndks5z5k3g5yp4nhphflh3n3boad.onion",
+  "http://nadekoohummkxncchcsylr3eku36ze4waq4kdrhcqupckc3pe5qq.b32.i2p",
+  "http://invidious-nerdvpn.i2p",
+  "https://inv-ygg.nadeko.net",
+  "https://inv.nadeko.ygg",
+]
+const PIPED_INSTANCES: string[] = ["https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de", "https://api.piped.private.coffee"]
 const BACKEND_ORDER: BackendKey[] = ["yt-dlp", "invidious", "piped"]
 const HINTS = "↑↓/jk move · enter play · p audio · s subscribe · l add playlist · d delete · esc back"
 
@@ -171,17 +184,29 @@ export const App: Component = () => {
 
     if (screen() === "settings") {
       if (e.name === "escape") return setScreen("home")
-      if (e.name === "up" || e.name === "k") return setSRow((r) => (r + SETTINGS_KEYS.length - 1) % SETTINGS_KEYS.length)
-      if (e.name === "down" || e.name === "j") return setSRow((r) => (r + 1) % SETTINGS_KEYS.length)
+      const rows = settingsRows()
+      if (e.name === "up" || e.name === "k") return setSRow((r) => (r + rows.length - 1) % rows.length)
+      if (e.name === "down" || e.name === "j") return setSRow((r) => (r + 1) % rows.length)
       if (e.name === "return" || e.name === "space") {
-        const key = SETTINGS_KEYS[sRow()]!
-        if (key === "backend") {
-          setSettings({ ...settings(), backend: BACKEND_ORDER[(BACKEND_ORDER.indexOf(settings().backend) + 1) % 3]! })
+        const row = rows[sRow()]!
+        if (row === "backend") {
+          setSettings({ ...settings(), backend: BACKEND_ORDER[(BACKEND_ORDER.indexOf(settings().backend) + 1) % 3]! } as any)
           saveConf()
           return
         }
-        setEditing(key)
-        setEditBuf(String((settings() as any)[key]))
+        const pool = settings().backend === "invidious" ? INVIDIOUS_INSTANCES : PIPED_INSTANCES
+        const idx = pool.indexOf(row)
+        if (idx >= 0) {
+          const next = pool[(idx + 1) % pool.length]!
+          const field = settings().backend === "invidious" ? "invidious_instance" : "piped_instance"
+          setSettings({ ...settings(), [field]: next } as any)
+          saveConf()
+          return
+        }
+        if (row === "results_count") {
+          setEditing("results_count")
+          setEditBuf(String((settings() as any).results_count))
+        }
       }
       return
     }
@@ -261,6 +286,13 @@ function homeKeys(e: { name: string }) {
 }
 
 // --- screens ------------------------------------------------------------------------
+function settingsRows(): string[] {
+  const s = settings()
+  if (s.backend === "yt-dlp") return [...SETTINGS_KEYS]
+  const pool = s.backend === "invidious" ? INVIDIOUS_INSTANCES : PIPED_INSTANCES
+  return ["backend", ...pool]
+}
+
 function Home() {
   return (
     <box flexGrow={1} backgroundColor={theme.bg} justifyContent="center" alignItems="center">
@@ -375,8 +407,12 @@ const Sidebar: Component = () => {
           <>
             <text fg={theme.fg}>{v()!.title}</text>
             <text>
-              <Span fg={theme.muted}>{v()!.channel}</Span>
-              <Span fg={theme.faint}> · {v()!.date}</Span>
+              <Span fg={theme.muted}>Channel: </Span>
+              <Span fg={theme.fg}>{v()!.channel}</Span>
+            </text>
+            <text>
+              <Span fg={theme.muted}>Upload Date: </Span>
+              <Span fg={theme.fg}>{v()!.date}</Span>
             </text>
             <Show when={v()!.description}>
               {() => <text fg={theme.faint}>{v()!.description.slice(0, 200)}</text>}
@@ -389,24 +425,25 @@ const Sidebar: Component = () => {
 }
 
 function Settings() {
+  const rows = () => settingsRows()
   return (
     <box flexGrow={1} paddingLeft={2} paddingTop={1}>
-      <For each={SETTINGS_KEYS}>
-        {(key, i) => {
+      <For each={rows()}>
+        {(row, i) => {
           const focused = () => i() === sRow()
+          const isBackend = () => row === "backend"
+          const isCount = () => row === "results_count"
+          const isEditing = (row: string) => editing() === row
+          const value = () => (isBackend() || isCount() ? String((settings() as any)[row]) : row)
           return (
             <box height={1}>
               <text>
                 <Span fg={focused() ? theme.accent : theme.selectionBg}>{focused() ? " ▸ " : "   "}</Span>
-                <Show when={editing() !== key}>
-                  {() => (
-                    <>
-                      <Span fg={focused() ? theme.selectionFg : theme.muted}>{key} = </Span>
-                      <Span fg={focused() ? theme.selectionFg : theme.fg}>{String((settings() as any)[key])}</Span>
-                    </>
-                  )}
+                <Span fg={focused() ? theme.selectionFg : theme.muted}>{row} = </Span>
+                <Show when={!isEditing(row)}>
+                  <Span fg={focused() ? theme.selectionFg : theme.fg}>{value()}</Span>
                 </Show>
-                <Show when={editing() === key}>
+                <Show when={editing() === row}>
                   {() => (
                     <>
                       <Span fg={theme.selectionFg}>editing: </Span>
@@ -420,7 +457,11 @@ function Settings() {
         }}
       </For>
       <box height={1} />
-      <text fg={theme.faint}>↑↓ move · enter: cycle backend / edit · esc back</text>
+      <text fg={theme.faint}>
+        {settings().backend === "yt-dlp"
+          ? "↑↓ move · enter: backend/instance/count · esc back"
+          : "↑↓ move · enter: cycle instance · esc back"}
+      </text>
     </box>
   )
 }
