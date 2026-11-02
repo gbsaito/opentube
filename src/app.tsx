@@ -26,14 +26,13 @@ type Screen = "home" | "results" | "history" | "playlists" | "subscriptions" | "
 const QUICK: string[] = ["history", "playlists", "subscriptions", "settings", "quit"]
 const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "piped_instance", "results_count"]
 const INVIDIOUS_INSTANCES: string[] = [
+  "https://yt.chocolatemoo53.com",
   "https://inv.nadeko.net",
   "https://invidious.nerdvpn.de",
-  "https://yt.chocolatemoo53.com",
   "https://invidious.tiekoetter.com",
-  "http://inv.nadekonw7plitnjuawu6ytjsl7jlglk2t6pyq6eftptmiv3dvqndwvyd.onion",
+  "http://invidious-nerdvpn.i2p",
   "http://nerdvpneaggggfdiurknszkbmhvjndks5z5k3g5yp4nhphflh3n3boad.onion",
   "http://nadekoohummkxncchcsylr3eku36ze4waq4kdrhcqupckc3pe5qq.b32.i2p",
-  "http://invidious-nerdvpn.i2p",
   "https://inv-ygg.nadeko.net",
   "https://inv.nadeko.ygg",
 ]

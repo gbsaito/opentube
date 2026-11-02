@@ -71,7 +71,7 @@ for probe in ["search y", "history", "playlists", "subscriptions", "settings", "
 
 send(b"hello"); time.sleep(0.4)
 send(b"\r"); time.sleep(1.0)
-read_until(idle_ms=2000, total_ms=14000)  # yt-dlp search takes a few seconds
+read_until(idle_ms=3000, total_ms=110000)  # yt-dlp full-metadata search takes ~90s
 t2 = ANSI.sub(b"", buf_all).decode("utf-8", "ignore").replace("\x0c", "\n")
 print("== PHASE1 results ==")
 for probe in ["Al", "Lady Antebellum", "Alan Walker", "search"]:

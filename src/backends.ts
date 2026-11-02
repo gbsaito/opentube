@@ -3,7 +3,7 @@ import { settings, type Video } from "./config"
 export type BackendKey = "yt-dlp" | "invidious" | "piped"
 
 // default instance pools: user setting first, then fallbacks for dead instances
-const INVIDIOUS = ["https://inv.nadeko.net", "https://invidious.nerdvpn.de", "https://iv.datura.network"]
+const INVIDIOUS = ["https://yt.chocolatemoo53.com", "https://inv.nadeko.net", "https://invidious.nerdvpn.de"]
 const PIPED = ["https://pipedapi.kavin.rocks", "https://pipedapi.adminforge.de", "https://api.piped.private.coffee"]
 
 // --- yt-dlp ---------------------------------------------------------------------

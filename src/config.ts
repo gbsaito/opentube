@@ -24,7 +24,7 @@ export interface Settings {
 const DEFAULTS: Settings = {
   backend: "yt-dlp",
   results_count: 25,
-  invidious_instance: "https://inv.nadeko.net",
+  invidious_instance: "https://yt.chocolatemoo53.com",
   piped_instance: "https://pipedapi.kavin.rocks",
 }
 
