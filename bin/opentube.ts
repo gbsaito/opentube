@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 import { appendFileSync } from "fs"
 
-// diagnostic: record raw bytes kitty sends, exactly as received (temporary)
+// kick stdin into flowing mode before opentui mounts; without this, kitty 0.49
+// delivers no keyboard events to the TUI (keys parse fine in plain ptys).
 process.stdin.setEncoding("utf8")
 process.stdin.on("data", (chunk: string) => {
-  try {
-    appendFileSync("/tmp/opentube-raw.log", `${Date.now()} ${Buffer.from(chunk).toString("hex")}\n`)
-  } catch {}
+  if (process.env.OTUI_DEBUG) {
+    try { appendFileSync("/tmp/opentube-raw.log", `${Date.now()} ${Buffer.from(chunk).toString("hex")}\n`) } catch {}
+  }
 })
 
 import { mountApp } from "../src/app"
