@@ -467,7 +467,7 @@ const NowPlaying: Component = () => {
 const NonHomeScreens: Component = () => (
   <box flexGrow={1} flexDirection="column" backgroundColor={theme.bg}>
     <Chrome title={screen() === "results" ? `search › ${query()}` : screen() === "nowplaying" ? `now playing › ${npVideo?.title ?? ""}` : (screen() as string)} />
-    {screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" ? <StoreScreen /> : screen() === "nowplaying" ? <NowPlaying /> : <box flexGrow={1} />}
+    {screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" || screen() === "playlists" ? <StoreScreen /> : screen() === "nowplaying" ? <NowPlaying /> : <box flexGrow={1} />}
     <box height={1} paddingLeft={2} backgroundColor={theme.bg}>
       <text fg={theme.faint}>{HINTS}</text>
     </box>
@@ -488,10 +488,16 @@ const Chrome: Component<{ title: string }> = (props) => (
 )
 
 function activateQuick(item: string | undefined) {
-  // playlists/subscriptions are visual-only for now: no navigation either
   if (!item) return
   if (item === "quit") return void quitApp()
   if (item === "settings") return setScreen("settings")
+  if (item === "playlists") {
+    setStore(playlists)
+    setStoreIndex(0)
+    setPage(0)
+    setExhausted(false)
+    return setScreen("playlists")
+  }
   if (item === "history") {
     setStore(history)
     setStoreIndex(0)
