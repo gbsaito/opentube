@@ -551,7 +551,11 @@ function Home() {
           }}
         />
       </box>
-      <box height={2} />
+      <box height={1} />
+      <box width="62%" maxWidth={72} alignSelf="center">
+        <text fg={theme.faint}>tab switch focus · ↑↓ move · enter open · type to search</text>
+      </box>
+      <box height={1} />
       <box width="62%" maxWidth={72} alignSelf="center" paddingLeft={2}>
         <For each={QUICK}>
           {(item, i) => {
@@ -579,10 +583,6 @@ function Home() {
             )
           }}
         </For>
-      </box>
-      <box height={1} />
-      <box alignSelf="center">
-        <text fg={theme.faint}>tab switch focus · ↑↓ move · enter open · type to search</text>
       </box>
     </box>
   )
