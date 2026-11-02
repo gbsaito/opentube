@@ -748,7 +748,18 @@ const Sidebar: Component = () => {
                 <Span fg={theme.fg}>{fmtViews(v()!.views || sidebarMeta()?.views || "")}</Span>
               </text>
               <Show when={v()!.description || sidebarMeta()?.description}>
-                {() => <text fg={theme.faint}>{(v()!.description || sidebarMeta()?.description || "").slice(0, 200)}</text>}
+                {() => {
+                  // respect original line breaks / spaces: split on newlines, trim, per-line truncate
+                  const desc = (v()!.description || sidebarMeta()?.description || "")
+                  const shown = desc
+                    .split(/\r\n|\r|\n/)
+                    .map((l) => l.trim())
+                    .filter((l) => l.length > 0)
+                    .slice(0, 20)
+                    .map((l) => l.slice(0, 200))
+                    .join("\n")
+                  return <text fg={theme.faint}>{shown}</text>
+                }}
               </Show>
             </>
           )}
