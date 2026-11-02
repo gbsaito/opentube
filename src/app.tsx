@@ -145,6 +145,30 @@ function localFocus(): number {
   return currentIndex() - page() * pageSize()
 }
 
+// UI zoom (0.5–2), ctrl+wheel steps 0.25; scales the sidebar layout
+const [zoomLevel, setZoomLevel] = createSignal(1)
+
+// mouse: hover/drag over a row selects it, double-click interacts (plays)
+let lastClick = { id: "", at: 0 }
+function hoverSelect(local: number, v: Video | undefined) {
+  if (!v || screen() === "home" || screen() === "settings" || screen() === "nowplaying") return
+  const list = visibleList()
+  if (local >= list.length) return
+  if (currentVideo()?.id === v.id) return
+  setSel(page() * pageSize() + local)
+  refreshSidebar(v)
+}
+function rowMouseDown(local: number, v: Video) {
+  const now = Date.now()
+  if (lastClick.id === v.id && now - lastClick.at < 400) {
+    lastClick = { id: "", at: 0 }
+    hoverSelect(local, v)
+    return playCurrent("video") // double click interacts
+  }
+  lastClick = { id: v.id, at: now }
+  hoverSelect(local, v)
+}
+
 let rendererRef: CliRenderer | null = null
 
 async function quitApp() {
@@ -276,6 +300,21 @@ function deleteCurrent() {
 export const App: Component = () => {
   const renderer = useRenderer()
   rendererRef = renderer
+  // global mouse: scroll navigates, ctrl+scroll zooms
+  renderer.root.onMouse = (e) => {
+    if (e.type !== "scroll") return
+    const dir = e.scroll?.direction === "up" ? -1 : 1
+    if (e.modifiers.ctrl) {
+      setZoomLevel((z) => Math.min(2, Math.max(0.5, z + dir * 0.25)))
+      return
+    }
+    if (screen() === "home") {
+      setInputMode(false)
+      setQuickIndex((i) => (i + dir + QUICK.length) % QUICK.length)
+      return
+    }
+    moveSelection(dir)
+  }
   useKeyboard((e) => {
     try { if (process.env.OTUI_DEBUG) appendFileSync("/tmp/opentube-keys.log", `${Date.now()} name=${e.name} seq=${JSON.stringify(e.sequence)} type=${e.eventType}\n`) } catch {}
     if (process.env.APP_DBG) console.log("[app-keys]", e.name, screen(), editing()?.slice(0,0) ?? "")
@@ -438,36 +477,37 @@ const Chrome: Component<{ title: string }> = (props) => (
   </box>
 )
 
+function activateQuick(item: string | undefined) {
+  // playlists/subscriptions are visual-only for now: no navigation either
+  if (!item) return
+  if (item === "quit") return void quitApp()
+  if (item === "settings") return setScreen("settings")
+  if (item === "history") {
+    setStore(history)
+    setStoreIndex(0)
+    setPage(0)
+    void updateMeta(history.items[0])
+    return setScreen("history")
+  }
+}
+
 function homeKeys(e: { name: string; preventDefault(): void }) {
   // terminal key-name variants for Enter all mean submit
   const name = e.name === "kpenter" || e.name === "enter" || e.name === "linefeed" ? "return" : e.name
   if (inputMode()) {
     if (name === "escape" || name === "down") return setInputMode(false)
     if (name === "return") return void doSearch(query())
-    if (name === "/") {
-      e.preventDefault() // toggle key must not land in the search field
-      return setInputMode(false)
+    if (e.name === "tab") {
+      e.preventDefault() // tab switches focus without landing a literal tab in the query
+      return setInputMode(false) // searchbox -> quick access
     }
     return // input owns the other keys; its own handler already blurs on escape
   }
   if (e.name === "up" || e.name === "k") return setQuickIndex((i) => (i + QUICK.length - 1) % QUICK.length)
   if (e.name === "down" || e.name === "j") return setQuickIndex((i) => (i + 1) % QUICK.length)
-  if (e.name === "/") {
-    e.preventDefault() // focus change key must not be inserted into the input
-    return setInputMode(true)
-  }
-  if (e.name === "return" || e.name === "space") {
-    const item = QUICK[quickIndex()]!
-    // playlists/subscriptions are visual-only for now: no navigation either
-    if (item === "quit") return void quitApp()
-    if (item === "settings") return setScreen("settings")
-    if (item === "history") {
-      setStore(history)
-      setStoreIndex(0)
-      setPage(0)
-      void updateMeta(history.items[0])
-      return setScreen("history")
-    }
+  if (e.name === "tab") return setInputMode(true) // tab switches focus: quick access -> searchbox
+  if (name === "return" || e.name === "space") {
+    return activateQuick(QUICK[quickIndex()]!)
   }
 }
 
@@ -484,7 +524,18 @@ function Home() {
       <box height={1} />
       <ascii_font text="opentube" font="block" color={theme.accent} />
       <box height={2} />
-      <box width="62%" maxWidth={72} padding={1} border={["left"]} borderStyle="single" borderColor={theme.accentDim} backgroundColor={theme.inputBg}>
+      <box
+        width="62%"
+        maxWidth={72}
+        padding={1}
+        border={["left"]}
+        borderStyle="single"
+        borderColor={theme.accentDim}
+        backgroundColor={theme.inputBg}
+        onMouseDown={(e: any) => {
+          if (e.button === 0) setInputMode(true)
+        }}
+      >
         <input
           placeholder=" search youtube…"
           placeholderColor={theme.faint}
@@ -506,7 +557,20 @@ function Home() {
           {(item, i) => {
             const active = () => i() === quickIndex() && !inputMode()
             return (
-              <box height={1} backgroundColor={active() ? theme.selectionBg : undefined}>
+              <box
+                height={1}
+                backgroundColor={active() ? theme.selectionBg : undefined}
+                onMouseOver={() => {
+                  if (inputMode()) return // while typing, mouse hovering must not steal the menu
+                  setQuickIndex(i())
+                }}
+                onMouseDown={(e: any) => {
+                  if (e.button !== 0) return
+                  setQuickIndex(i())
+                  setInputMode(false)
+                  activateQuick(item)
+                }}
+              >
                 <text fg={active() ? theme.selectionFg : theme.muted}>
                   <Span fg={active() ? theme.selectionFg : theme.selectionBg}>{active() ? " ▸ " : "   "}</Span>
                   {item}
@@ -516,14 +580,27 @@ function Home() {
           }}
         </For>
       </box>
+      <box height={1} />
+      <box alignSelf="center">
+        <text fg={theme.faint}>tab switch focus · ↑↓ move · enter open · type to search</text>
+      </box>
     </box>
   )
 }
 
-const ListRow: Component<{ v: Video; selected: boolean }> = (props) => {
+const ListRow: Component<{ v: Video; selected: boolean; local: number }> = (props) => {
   const mark = () => (props.selected ? " ▸ " : "   ")
   return (
-    <box id={`row-${props.v.id}`} height={1} backgroundColor={props.selected ? theme.selectionBg : undefined}>
+    <box
+      id={`row-${props.v.id}`}
+      height={1}
+      backgroundColor={props.selected ? theme.selectionBg : undefined}
+      onMouseOver={() => hoverSelect(props.local, props.v)}
+      onMouseMove={() => hoverSelect(props.local, props.v)}
+      onMouseDown={(e: any) => {
+        if (e.button === 0) rowMouseDown(props.local, props.v)
+      }}
+    >
       <text fg={props.selected ? theme.selectionFg : theme.fg}>
         <Span fg={props.selected ? theme.selectionFg : theme.selectionBg}>{mark()}</Span>
         {props.v.title.slice(0, 68)}
@@ -551,7 +628,7 @@ function Results() {
         <Show when={loading()}>{() => <ListHint text={`searching via ${settings().backend}…`} />}</Show>
         <Show when={!!error()}>{() => <ListHint text={`error: ${error()}`} color={theme.accentDim} />}</Show>
         <Show when={!loading() && !error() && videos().length === 0}>{() => <ListHint text="no results" />}</Show>
-        <For each={visibleList()}>{(v, i) => <ListRow v={v} selected={i() === localFocus()} />}</For>
+        <For each={visibleList()}>{(v, i) => <ListRow v={v} selected={i() === localFocus()} local={i()} />}</For>
         <Show when={loadingMore()}>
           {() => <ListHint text="loading more…" />}
         </Show>
@@ -570,7 +647,7 @@ function StoreScreen() {
       <scrollbox ref={(el: any) => (listScrollRef = el)} scrollY flexGrow={1} border={["right"]} borderStyle="single" borderColor={theme.surfaceBorder}>
         <Show when={items().length === 0}>{() => <ListHint text="nothing here yet" />}
         </Show>
-        <For each={visibleList()}>{(v, i) => <ListRow v={v} selected={i() === localFocus()} />}</For>
+        <For each={visibleList()}>{(v, i) => <ListRow v={v} selected={i() === localFocus()} local={i()} />}</For>
       </scrollbox>
       <Show when={settings().previews || settings().image_previews}>
         <Sidebar />
@@ -598,11 +675,17 @@ const Sidebar: Component = () => {
     return "auto"
   }
   return (
-    <box width={44} flexDirection="column" paddingLeft={1} paddingTop={1}>
+    <box
+      width={Math.round(44 * zoomLevel())}
+      flexDirection="column"
+      paddingLeft={Math.round(2 * zoomLevel())}
+      paddingRight={Math.round(2 * zoomLevel())}
+      paddingTop={1}
+    >
       <Show when={infoOn() && imageOn()}>
-        <box height={13} justifyContent="center" alignItems="center">
+        <box height={Math.round(13 * zoomLevel())} justifyContent="center" alignItems="center">
           <Show when={thumb()} fallback={<text fg={theme.faint}>...</text>}>
-            {() => <image source={thumb()!} fit="fit" width={42} height={12} protocol={renderProtocol()} />}
+            {() => <image source={thumb()!} fit="fit" width={Math.round(40 * zoomLevel())} height={Math.round(12 * zoomLevel())} protocol={renderProtocol()} />}
           </Show>
         </box>
       </Show>
@@ -680,5 +763,5 @@ function Settings() {
 
 export function mountApp() {
   loadSettings()
-  render(() => <App />)
+  render(() => <App />, { useMouse: true })
 }
