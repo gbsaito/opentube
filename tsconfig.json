@@ -22,6 +22,11 @@
 
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
+    "noPropertyAccessFromIndexSignature": false,
+    // bun test resolves solid-js to its server build (onMount = noop); pin the client runtime
+    "paths": {
+      "solid-js": ["./node_modules/solid-js/dist/index.d.ts"],
+      "solid-js/*": ["./node_modules/solid-js/dist/*"]
+    }
   }
 }
