@@ -607,7 +607,7 @@ function Home() {
             return (
               <box
                 height={1}
-                backgroundColor={active() ? theme.selectionBg : undefined}
+                backgroundColor={active() ? settings().accent : undefined}
                 onMouseOver={() => {
                   if (inputMode()) return // while typing, mouse hovering must not steal the menu
                   setQuickIndex(i())
@@ -619,7 +619,7 @@ function Home() {
                   activateQuick(item)
                 }}
               >
-                <text fg={active() ? settings().accent : theme.muted}>
+                <text fg={active() ? theme.fg : theme.muted}>
                   {QUICK_ICON[item] ?? "•"} {QUICK_LABEL[item] ?? item}
                 </text>
               </box>
@@ -637,15 +637,15 @@ const ListRow: Component<{ v: Video; selected: boolean; local: number }> = (prop
     <box
       id={`row-${props.v.id}`}
       height={1}
-      backgroundColor={props.selected ? theme.selectionBg : undefined}
+      backgroundColor={props.selected ? settings().accent : undefined}
       onMouseOver={() => hoverSelect(props.local, props.v)}
       onMouseMove={() => hoverSelect(props.local, props.v)}
       onMouseDown={(e: any) => {
         if (e.button === 0) rowMouseDown(props.local, props.v)
       }}
     >
-      <text fg={props.selected ? settings().accent : theme.fg}>
-        <Span fg={props.selected ? settings().accent : theme.selectionBg}>{mark()}</Span>
+      <text fg={theme.fg}>
+        <Span fg={props.selected ? theme.fg : theme.selectionBg}>{mark()}</Span>
         {props.v.title.slice(0, 68)}
         <Show when={props.v.duration}>
           {() => <Span fg={theme.faint}> {props.v.duration}</Span>}
