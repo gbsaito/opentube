@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import { createSignal, For, Show, type Component } from "solid-js"
+import { createSignal, For, Show, type Component, onMount } from "solid-js"
 import { useKeyboard, useRenderer, render } from "@opentui/solid"
 import type { CliRenderer } from "@opentui/core"
 import { theme } from "./theme"
@@ -22,7 +22,7 @@ import { play } from "./player"
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
 const Span: Component<any> = (props) => <span {...props} />
 
-type Screen = "home" | "results" | "history" | "playlists" | "subscriptions" | "settings"
+type Screen = "home" | "results" | "history" | "playlists" | "subscriptions" | "settings" | "nowplaying"
 
 // 1234567 -> "1,234,567"; non-numeric strings pass through
 const fmtViews = (s: string) => (/^\d+$/.test(s) ? Number(s).toLocaleString("en-US") : s)
@@ -163,19 +163,13 @@ async function doSearch(q: string) {
   setSel(0)
   try {
     setVideos(await searchVideos(q))
-    void updateThumb(videos()[0])
-    void updateMeta(videos()[0])
+    void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
   } catch (e) {
     setVideos([])
     setError(ERR_MSG(e))
   } finally {
     setLoading(false)
   }
-}
-
-function refreshSidebar(v: Video | undefined) {
-  if (screen() === "results") void updateThumb(v)
-  void updateMeta(v)
 }
 
 function moveSelection(delta: number) {
@@ -228,11 +222,22 @@ async function ensurePageLoaded() {
   }
 }
 
+function refreshSidebar(v: Video | undefined) {
+  if (v) npVideo = v
+  if (screen() === "results") void Promise.all([updateThumb(v), updateMeta(v)])
+}
+
+let npVideo: Video | null = null
+let npStart = 0
+
 function playCurrent(mode: "video" | "audio") {
   const v = currentVideo()
   if (!v) return
   play(v, mode)
   history.add(withMeta(v))
+  npVideo = v
+  npStart = Date.now()
+  setScreen("nowplaying")
 }
 
 function subscribeCurrent() {
@@ -362,10 +367,51 @@ export const App: Component = () => {
   )
 }
 
+const NowPlaying: Component = () => {
+  const [elapsed, setElapsed] = createSignal(0)
+  let startedAt = Date.now()
+  let timer: ReturnType<typeof setInterval>
+  onMount(() => {
+    startedAt = Date.now()
+    timer = setInterval(() => setElapsed(Date.now() - startedAt), 250)
+    return () => clearInterval(timer)
+  })
+  const v = npVideo
+  const bar = (frac: number) => {
+    const w = 30
+    const f = Math.max(0, Math.min(1, frac))
+    const filled = Math.round(f * w)
+    const head = Array.from({ length: filled }, () => "█").join("")
+    const tail = Array.from({ length: w - filled }, () => "░").join("")
+    return head + tail
+  }
+  const durSec = (() => {
+    const d = v?.duration ?? "0"
+    const parts = d.split(":")
+    const nums = parts.map((p) => parseInt(p) || 0)
+    const total = parts.length >= 3 ? nums[0]! * 3600 + nums[1]! * 60 + nums[2]! : parts.length === 2 ? nums[0]! * 60 + nums[1]! : nums[0]!
+    return total > 0 ? total : 0
+  })()
+  const frac = durSec > 0 ? Math.min(1, elapsed() / durSec) : 1
+  return (
+    <box flexGrow={1} backgroundColor={theme.bg} flexDirection="column" justifyContent="center" alignItems="center">
+      <box height={1} />
+      <text fg={theme.accent}>Now Playing: {v?.title ?? ""}</text>
+      <box height={2} />
+      <box width={34} height={1}>
+        <text fg={theme.fg}>{bar(frac)}</text>
+      </box>
+      <box height={2} />
+      <text fg={theme.faint}>{Math.round(frac * 100)}%</text>
+      <box height={2} />
+    </box>
+  )
+}
+
 const NonHomeScreens: Component = () => (
   <box flexGrow={1} flexDirection="column" backgroundColor={theme.bg}>
-    <Chrome title={screen() === "results" ? `search › ${query()}` : (screen() as string)} />
-    {screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" ? <StoreScreen /> : <box flexGrow={1} />}
+    <Chrome title={screen() === "results" ? `search › ${query()}` : screen() === "nowplaying" ? `now playing › ${npVideo?.title ?? ""}` : (screen() as string)} />
+    {screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" ? <StoreScreen /> : screen() === "nowplaying" ? <NowPlaying /> : <box flexGrow={1} />}
     <box height={1} paddingLeft={2} backgroundColor={theme.bg}>
       <text fg={theme.faint}>{HINTS}</text>
     </box>
