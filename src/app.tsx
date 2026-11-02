@@ -19,7 +19,7 @@ import {
   TITLE_FONTS,
 } from "./config"
 import { searchVideos, searchMoreVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
-import { play, npTime, npDur } from "./player"
+import { play, npTime, npDur, stopPlayback, togglePause, seekTo } from "./player"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
 const Span: Component<any> = (props) => <span {...props} />
@@ -395,6 +395,25 @@ export const App: Component = () => {
       return
     }
 
+    // now playing: esc quits mpv and goes back to the last search query; p toggles pause; left/right seek
+    if (screen() === "nowplaying") {
+      if (e.name === "escape") {
+        void stopPlayback() // quit mpv (video+audio)
+        setScreen("results")
+        setQuery(lastSearch.q) // back to the query searched last
+        setLoading(false)
+        return
+      }
+      if (e.name === "p" || e.name === "P") {
+        togglePause()
+        return
+      }
+      if (e.name === "left" || e.name === "right") {
+        seekTo(npTime() + (e.name === "right" ? 10 : -10))
+        return
+      }
+    }
+
     // results / history / playlists / subscriptions
     switch (e.name) {
       case "escape":
@@ -414,7 +433,8 @@ export const App: Component = () => {
       case "return":
         return playCurrent("video")
       case "p":
-        return playCurrent("video")
+        // kitty reports shifted letters as lowercase name + shift flag, so shift+P == "p"+shift
+        return playCurrent(e.shift ? "audio" : "video")
       case "P":
         return playCurrent("audio")
       case "s":

@@ -10,10 +10,33 @@ let pending: Array<"time" | "dur"> = []
 let buf = ""
 let poller: ReturnType<typeof setInterval> | null = null
 let firstPlayAt = 0
+let paused = false
 
 // live playback position/total reported to the now-playing screen
 export const [npTime, setNpTime] = createSignal(0)
 export const [npDur, setNpDur] = createSignal(0)
+
+export function isPaused() {
+  return paused
+}
+export function togglePause() {
+  paused = !paused
+  void sendCommand(["set_property", "pause", paused])
+}
+export function seekTo(sec: number) {
+  void sendCommand(["seek", sec, "absolute"])
+}
+export function stopPlayback() {
+  stopCurrent()
+}
+function sendCommand(cmd: unknown[]) {
+  if (!conn) return
+  try {
+    conn.write(`${JSON.stringify({ command: cmd })}\n`)
+  } catch {
+    conn = null
+  }
+}
 
 function resetProgress() {
   setNpTime(0)
@@ -90,6 +113,7 @@ async function poll() {
 
 export function play(v: Video, mode: "video" | "audio") {
   stopCurrent()
+  paused = false
   resetProgress()
   socketPath = `/tmp/opentube-mpv-${Date.now()}.sock`
   const args = mode === "audio" ? ["--no-video"] : ["--ytdl-format=bestvideo+bestaudio/best"]
