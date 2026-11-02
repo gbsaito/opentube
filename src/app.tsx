@@ -271,6 +271,72 @@ export const App: Component = () => {
   const renderer = useRenderer()
   rendererRef = renderer
   useKeyboard((e) => {
+  useMouse((e) => {
+  const [lastClickTime, setLastClickTime] = createSignal(0)
+  const [hoveredIndex, setHoveredIndex] = createSignal<number | null>(null)
+  const [isHovering, setIsHovering] = createSignal(false)
+  let hoverTimer: ReturnType<typeof setTimeout>
+  let lastHoveredId: string | null = null
+
+  function handleHover(v: Video, index: number) {
+    setHoveredIndex(index)
+    setIsHovering(true)
+    lastHoveredId = v.id
+    clearTimeout(hoverTimer)
+    hoverTimer = setTimeout(() => {
+      setIsHovering(false)
+    }, 1000)
+  }
+
+  function handleClick(v: Video, index: number) {
+    const now = Date.now()
+    if (now - lastClickTime() < 500) {
+      // Double click
+      playCurrent("video")
+    } else {
+      // Single click
+      setLastClickTime(now)
+      setSel(page() * pageSize() + index)
+      refreshSidebar(v)
+    }
+  }
+
+  onCleanup(() => {
+    clearTimeout(hoverTimer)
+  })
+
+  if (e.eventType === "release") return
+    if (e.button === "wheelUp") {
+      if (screen() === "home") {
+        setQuickIndex((i) => (i + QUICK.length - 1) % QUICK.length)
+      } else {
+        moveSelection(-1)
+      }
+    } else if (e.button === "wheelDown") {
+      if (screen() === "home") {
+        setQuickIndex((i) => (i + 1) % QUICK.length)
+      } else {
+        moveSelection(1)
+      }
+    } else if (e.button === "left") {
+      if (screen() === "home") {
+        setInputMode(true)
+      } else {
+        const list = visibleList()
+        const local = Math.min(localFocus(), list.length - 1)
+        const picked = list[local]
+        if (picked) {
+          setSel(page() * pageSize() + local)
+          refreshSidebar(picked)
+        }
+      }
+    } else if (e.button === "right") {
+      if (screen() !== "home") {
+        goPage(1)
+      }
+    }
+  })
+  useKeyboard((e) => {
     if (process.env.APP_DBG) console.log("[app-keys]", e.name, screen(), editing()?.slice(0,0) ?? "")
     if (e.eventType === "release") return
 
