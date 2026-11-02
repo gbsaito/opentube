@@ -148,14 +148,38 @@ async function firstJson<T>(urls: string[]): Promise<T | null> {
 export async function videoMeta(id: string): Promise<VideoMeta> {
   const hit = metaCache.get(id)
   if (hit) return hit
-  const empty: VideoMeta = { description: "", date: "", views: "" }
+  let meta: VideoMeta = (await invidiousMeta(id)) ?? { description: "", date: "", views: "" }
+  if (!meta.description) {
+    // invidious instances increasingly serve empty descriptions; yt-dlp fills the gap
+    meta = { ...meta, ...(await ytdlpMeta(id)) }
+  }
+  if (meta.description || meta.date || meta.views) metaCache.set(id, meta) // failed/empty fetches stay uncached (retryable)
+  return meta
+}
+
+async function invidiousMeta(id: string): Promise<VideoMeta | null> {
   const urls = candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/videos/${id}`)
   const j = await firstJson<any>(urls)
-  const meta: VideoMeta = j
-    ? { description: clean(String(j.description ?? j.descriptionHtml ?? "")), date: j.publishedText ?? "", views: String(j.viewCount ?? "") }
-    : empty
-  metaCache.set(id, meta)
-  return meta
+  if (!j) return null
+  return { description: clean(String(j.description ?? j.descriptionHtml ?? "")), date: j.publishedText ?? "", views: String(j.viewCount ?? "") }
+}
+
+async function ytdlpMeta(id: string): Promise<VideoMeta> {
+  try {
+    const proc = Bun.spawn(
+      ["yt-dlp", "--no-warnings", "--socket-timeout", "5", "--dump-json", `https://www.youtube.com/watch?v=${id}`],
+      { stdout: "pipe", stderr: "ignore" },
+    )
+    const text = await new Response(proc.stdout).text()
+    const j = JSON.parse(text) as any
+    return {
+      description: clean(j.description ?? ""),
+      date: j.upload_date ? `${j.upload_date.slice(0, 4)}-${j.upload_date.slice(4, 6)}-${j.upload_date.slice(6, 8)}` : "",
+      views: String(j.view_count ?? ""),
+    }
+  } catch {
+    return { description: "", date: "", views: "" }
+  }
 }
 
 export const ERR_MSG = (e: unknown) => (e instanceof Error ? e.message : String(e))

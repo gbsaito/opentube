@@ -1,9 +1,11 @@
 # progress
 
 ## current task
-- [ ] Build OpenTube TUI app per PLAN.md (phases 1-3 done; phase 4 auth optional)
+- [ ] Fix descriptions not showing (regression)
 
 ## status
+- Description regression ROOT CAUSE (fix in src/backends.ts): NOT a UI bug — invidious instances now serve `description: ""` (chocolatemoo 200+empty, nadeko "Endpoint disabled" 403, nerdvpn.de dead/hangs >12s) and videoMeta cached the empty result forever (unconditional metaCache.set), so every video showed no description. Fix: after the invidious race, when description is empty, fall back to yt-dlp (`--dump-json` watch URL) for description/date/views; failed/empty meta is no longer cached (retryable). Verified live in a pty: sidebar for "Adele - Hello" shows Channel/Upload Date/Views + full description text ("Listen to Easy On Me ..." etc).
+- videoMeta latency ceiling: ~5s when nerdvpn (dead instance, user's configured, stale conf `invidious_instance = https://invidious.nerdvpn.de`) spends its 5s AbortSignal before yt-dlp fallback (~0.3s); once cached, instant. Upgrade path: prune instances that recently served empty/dead from the candidate order.
 - Mouse/zoom features back in (45edaaa): wheel navigates (home quick menu w/o click keys; lists move selection), ctrl+wheel zooms 0.5–2 in 0.25 steps, hover/drag over list rows selects (mouse over/move), double-click on a row plays the video, click searchbox focuses it, click quick-menu row activates it. Sidebar scaled by zoom: width/pads/image scale; image centered; texts padded left/right.
 - No drag anywhere (hover-select only, user request); comment updated (1569114).
 - TAB toggles focus quick-access <-> searchbox (replaces old / toggle); esc/down unfocus; hint on home: "tab switch focus · ↑↓ move · enter open · type to search"; hint sits below searchbox / above quick menu (user fix, e542fa0, re-verified via pty probe).

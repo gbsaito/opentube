@@ -4,11 +4,14 @@ import { settings, setSettings } from "./config"
 
 test("videoMeta races the instance pool, cleans html and caches", async () => {
   const real = globalThis.fetch
+  const realSpawn = Bun.spawn
   ;(globalThis as any).fetch = async (u: any) => {
     const url = String(u)
     if (url.includes("/api/v1/videos/abc")) return new Response(JSON.stringify({ descriptionHtml: "<b>HTML<i>desc</i></b>  here", publishedText: "13 years ago", viewCount: 12345 }))
     return new Response("nope", { status: 500 })
   }
+  // stub yt-dlp fallback (hermetic): unparseable stdout -> empty meta
+  ;(Bun as any).spawn = () => ({ stdout: new Response("").body })
   const before = settings()
   setSettings({ ...before, invidious_instance: "http://stub.inv" } as any)
   try {
@@ -18,5 +21,6 @@ test("videoMeta races the instance pool, cleans html and caches", async () => {
   } finally {
     setSettings(before)
     ;(globalThis as any).fetch = real
+    ;(Bun as any).spawn = realSpawn
   }
 })
