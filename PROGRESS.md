@@ -1,13 +1,9 @@
 # progress
 
 ## current task
-- [x] Fix broken zoom paste in app.tsx (syntax error + broken useMouse + Sidebar zoom scope)
-- [x] Build OpenTube TUI app per PLAN.md (phases 1-3 done; phase 4 auth optional)
+- [ ] Build OpenTube TUI app per PLAN.md (phases 1-3 done; phase 4 auth optional)
 
 ## status
-- Mouse: wheel = navigate (quick menu on home, move selection in lists); ctrl+wheel = zoom (sidebar image 0.5–2x); left press+drag = range select, plain left click = select, right click = page forward. Uses `renderer.root.onMouse` (no useMouse hook exists in @opentui/solid 0.8.1).
-- Keyboard/input restored byte-identical to pre-mouse commit 159add0 (input JSX, homeKeys, results-esc → home re-focusing searchbox). Mouse+zoom is the only delta over that baseline.
-- Verified via pty probes + scripts/live_smoke.py: type in search, enter submits (results screen, "searching via <backend>…"), esc returns home (searchbox focused, per original), `/` toggles search/quick menu, wheel moves quick menu, kitty CSI 27u/27;1u parse as escape, kitty-protocol keys intact.
 - Phase 1 (scaffold, homescreen): DONE — ascii title, search box, quick access menu.
 - Phase 2 (search + list + sidebar + playback wiring): DONE & verified live.
 - Phase 3 (quick access): DONE — history + settings functional; playlists/subscriptions visual-only (user decision).
@@ -34,7 +30,7 @@
 - Pagination is one shared pager (page size = results_count): every list screen windows its rows with ←/→; results additionally fetch continuation rows behind the window (invidious API pages of 20 chained to fill result_count windows; yt-dlp re-crawls ytsearch to `target` and slices). Header shows `page x/y+` — `+` means more pages may exist.
 
 ## bugs fixed
-- Broken zoom feature paste: `useKeyboard((e) => {` replaced the mouse handler opener, leaving an unclosed callback (parse error at `const NowPlaying`); zoom signals were declared inside the mouse callback and Sidebar read `zoomLevel()` from App scope. Fixed: mouse rides `renderer.root.onMouse`, zoom signal is module-level, wheel handled once (zoom) — wheel no longer also moves selection or cycles quick access.- `/` toggles search <-> quick access without appending `/` to the search field (preventDefault).
+- `/` toggles search <-> quick access without appending `/` to the search field (preventDefault).
 - Settings editor: backspace worked (DEL char passed the printable check and got appended); added block cursor.
 - Sidebar description now shows: fetched lazily per selection.
 - yt-dlp "infinite" search: was full-metadata crawl (~90s); now fast flat rows + lazy date fill.

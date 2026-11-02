@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import { onCleanup, createSignal, For, Show, type Component, onMount } from "solid-js"
+import { createSignal, For, Show, type Component, onMount } from "solid-js"
 import { useKeyboard, useRenderer, render } from "@opentui/solid"
 import type { CliRenderer } from "@opentui/core"
 import { theme } from "./theme"
@@ -146,9 +146,6 @@ function localFocus(): number {
 
 let rendererRef: CliRenderer | null = null
 
-// UI zoom (0.5–2), driven by mouse wheel
-const [zoomLevel, setZoomLevel] = createSignal(1)
-
 async function quitApp() {
   rendererRef?.destroy()
   await rendererRef?.closed
@@ -273,80 +270,6 @@ function deleteCurrent() {
 export const App: Component = () => {
   const renderer = useRenderer()
   rendererRef = renderer
-  const [dragStart, setDragStart] = createSignal<{ x: number; y: number } | null>(null)
-  function handleZoom(delta: number) {
-    setZoomLevel(Math.max(0.5, Math.min(2, zoomLevel() + delta * 0.1)))
-  }
-
-  function clickSelect() {
-    if (screen() === "home") return setInputMode(true)
-    const list = visibleList()
-    const local = Math.min(localFocus(), list.length - 1)
-    const picked = list[local]
-    if (picked) {
-      setSel(page() * pageSize() + local)
-      refreshSidebar(picked)
-    }
-  }
-
-  function handleDragEnd(x: number, y: number): boolean {
-    const start = dragStart()
-    setDragStart(null)
-    if (!start) return false
-    if (Math.abs(x - start.x) <= 5 && Math.abs(y - start.y) <= 5) return false // plain click, not a drag
-    // drag range selection
-    const list = visibleList()
-    const startIndex = Math.floor(start.y / 2)
-    const endIndex = Math.floor(y / 2)
-    const min = Math.min(startIndex, endIndex)
-    const max = Math.max(startIndex, endIndex)
-    const selected = list.slice(min, max + 1)
-    if (selected.length > 0) {
-      setSel(page() * pageSize() + min)
-      refreshSidebar(selected[0]!)
-    }
-    return true
-  }
-
-  // global mouse: scroll navigates, ctrl+scroll zooms, left = click/drag select, right = page forward
-  renderer.root.onMouse = (e) => {
-    if (e.type === "scroll") {
-      const dir = e.scroll?.direction === "up" ? -1 : 1
-      if (e.modifiers?.ctrl) return handleZoom(-dir)
-      if (screen() === "home") {
-        setQuickIndex((i) => (i + dir + QUICK.length) % QUICK.length)
-        return setInputMode(false)
-      }
-      return moveSelection(-dir)
-    }
-    if (e.button === 2) {
-      if (e.type === "down" && screen() !== "home") void goPage(1)
-      return
-    }
-    if (e.button !== 0) return
-    if (e.type === "down") return setDragStart({ x: e.x, y: e.y })
-    if (e.type === "drag" && dragStart()) {
-      // live drag-range selection
-      const list = visibleList()
-      const startIndex = Math.floor(dragStart()!.y / 2)
-      const endIndex = Math.floor(e.y / 2)
-      const min = Math.min(startIndex, endIndex)
-      const max = Math.max(startIndex, endIndex)
-      const selected = list.slice(min, max + 1)
-      if (selected.length > 0) {
-        setSel(page() * pageSize() + min)
-        refreshSidebar(selected[0]!)
-      }
-      return
-    }
-    if (e.type === "up" && dragStart()) {
-      const wasDrag = handleDragEnd(e.x, e.y)
-      if (!wasDrag) clickSelect()
-    }
-  }
-  onCleanup(() => {
-    if (rendererRef === renderer) rendererRef = null
-  })
   useKeyboard((e) => {
     if (process.env.APP_DBG) console.log("[app-keys]", e.name, screen(), editing()?.slice(0,0) ?? "")
     if (e.eventType === "release") return
@@ -667,9 +590,9 @@ const Sidebar: Component = () => {
   return (
     <box width={44} flexDirection="column" paddingLeft={1} paddingTop={1} gap={1}>
       <Show when={imageOn()}>
-        <box height={Math.round(13 * zoomLevel())} justifyContent="center" alignItems="center" paddingLeft={Math.round(2 * zoomLevel())}>
+        <box height={13} justifyContent="center" alignItems="center" paddingLeft={2}>
           <Show when={thumb()} fallback={<text fg={theme.faint}>...</text>}>
-            {() => <image source={thumb()!} fit="fit" width={Math.round(42 * zoomLevel())} height={Math.round(12 * zoomLevel())} protocol={renderProtocol()} />}
+            {() => <image source={thumb()!} fit="fit" width={42} height={12} protocol={renderProtocol()} />}
           </Show>
         </box>
       </Show>
