@@ -15,7 +15,7 @@ import {
   type Store,
   type Video,
 } from "./config"
-import { searchVideos, videoDescription, ERR_MSG, type BackendKey } from "./backends"
+import { searchVideos, videoMeta, ERR_MSG, type BackendKey } from "./backends"
 import { play } from "./player"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
@@ -67,17 +67,20 @@ function commitEdit() {
   setEditing(null)
 }
 
-// description that may need a follow-up fetch (invidious search rows ship empty ones)
-const [sidebarDesc, setSidebarDesc] = createSignal<string | null>(null)
-let descId = ""
-async function updateDescription(v: Video | undefined) {
-  const id = v?.id ?? ""
-  descId = id
-  if (v?.description) return setSidebarDesc(v.description)
-  setSidebarDesc(null)
-  if (!id) return
-  const d = await videoDescription(id)
-  if (descId === id) setSidebarDesc(d || null) // ignore stale responses
+// lazy per-selection metadata fill: invidious rows lack description, yt-dlp flat rows lack date
+const [sidebarMeta, setSidebarMeta] = createSignal<{ date: string; description: string } | null>(null)
+let metaId = ""
+async function updateMeta(v: Video | undefined) {
+  const id = v?.id
+  if (!id) {
+    metaId = ""
+    return setSidebarMeta(null)
+  }
+  if (metaId === id || (v.description && v.date)) return // nothing to fill
+  metaId = id
+  setSidebarMeta(null)
+  const m = await videoMeta(id)
+  if (metaId === id) setSidebarMeta(m) // ignore stale responses
 }
 
 // sidebar thumbnail
@@ -133,7 +136,7 @@ async function doSearch(q: string) {
   try {
     setVideos(await searchVideos(q))
     void updateThumb(videos()[0])
-    void updateDescription(videos()[0])
+    void updateMeta(videos()[0])
   } catch (e) {
     setVideos([])
     setError(ERR_MSG(e))
@@ -150,7 +153,7 @@ function moveSelection(delta: number) {
   const picked = list[next]
   if (picked) listScrollRef?.scrollChildIntoView(`row-${picked.id}`, { align: "nearest" })
   if (screen() === "results") void updateThumb(picked)
-  void updateDescription(picked)
+  void updateMeta(picked)
 }
 
 function playCurrent(mode: "video" | "audio") {
@@ -302,7 +305,7 @@ function homeKeys(e: { name: string; preventDefault(): void }) {
     if (item === "history") {
       setStore(history)
       setStoreIndex(0)
-      void updateDescription(history.items[0])
+      void updateMeta(history.items[0])
       return setScreen("history")
     }
   }
@@ -428,10 +431,10 @@ const Sidebar: Component = () => {
             </text>
             <text>
               <Span fg={theme.muted}>Upload Date: </Span>
-              <Span fg={theme.fg}>{v()!.date}</Span>
+              <Span fg={theme.fg}>{v()!.date || sidebarMeta()?.date || ""}</Span>
             </text>
-            <Show when={sidebarDesc() ?? ""}>
-              {() => <text fg={theme.faint}>{(sidebarDesc() ?? "").slice(0, 200)}</text>}
+            <Show when={v()!.description || sidebarMeta()?.description}>
+              {() => <text fg={theme.faint}>{(v()!.description || sidebarMeta()?.description || "").slice(0, 200)}</text>}
             </Show>
           </>
         )}

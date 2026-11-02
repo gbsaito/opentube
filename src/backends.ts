@@ -6,8 +6,10 @@ export type BackendKey = "yt-dlp" | "invidious"
 const INVIDIOUS = ["https://yt.chocolatemoo53.com", "https://inv.nadeko.net", "https://invidious.nerdvpn.de"]
 
 // --- yt-dlp ---------------------------------------------------------------------
+// flat-playlist: fast rows (no per-video metadata crawl); missing date is filled
+// lazily by updateMeta on selection
 async function viaYtDlp(query: string): Promise<Video[]> {
-  const proc = Bun.spawn(["yt-dlp", "--dump-json", `ytsearch${settings().results_count}:${query}`], {
+  const proc = Bun.spawn(["yt-dlp", "--dump-json", "--flat-playlist", `ytsearch${settings().results_count}:${query}`], {
     stdout: "pipe",
     stderr: "ignore",
   })
@@ -19,9 +21,9 @@ async function viaYtDlp(query: string): Promise<Video[]> {
     .map((e) => ({
       id: e.id,
       title: e.title,
-      channel: e.uploader ?? "",
+      channel: e.channel ?? e.uploader ?? "",
       date: e.upload_date ? `${e.upload_date.slice(0, 4)}-${e.upload_date.slice(4, 6)}-${e.upload_date.slice(6, 8)}` : "",
-      description: clean(e.description ?? e.full_description ?? ""),
+      description: clean(e.description ?? ""),
       duration: e.duration ? fmtDuration(e.duration) : "",
     }))
 }
@@ -94,24 +96,25 @@ export function searchVideos(query: string): Promise<Video[]> {
 }
 
 // ponytail: ceiling is one request per selected video; upgrade to prefetch of neighbors when scroll feels sluggish
-const descCache = new Map<string, string>()
-/** full description for one id: invidious search rows ship description empty */
-export async function videoDescription(id: string): Promise<string> {
-  const hit = descCache.get(id)
-  if (hit !== undefined) return hit
+const metaCache = new Map<string, { description: string; date: string }>()
+/** lazy per-video metadata: invidious search rows ship no description, yt-dlp flat rows no upload date */
+export async function videoMeta(id: string): Promise<{ description: string; date: string }> {
+  const hit = metaCache.get(id)
+  if (hit) return hit
+  const empty = { description: "", date: "" }
   const urls = candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/videos/${id}`)
-  let desc = ""
+  let meta = empty
   for (const u of urls) {
     try {
       const j = (await getJson<any>(u)) as any
-      desc = clean(String(j.description ?? j.descriptionHtml ?? ""))
+      meta = { description: clean(String(j.description ?? j.descriptionHtml ?? "")), date: j.publishedText ?? "" }
       break
     } catch {
       // try next instance
     }
   }
-  descCache.set(id, desc)
-  return desc
+  metaCache.set(id, meta)
+  return meta
 }
 
 export const ERR_MSG = (e: unknown) => (e instanceof Error ? e.message : String(e))
