@@ -365,7 +365,7 @@ const Sidebar: Component = () => {
   const v = currentVideo
   return (
     <box width={44} flexDirection="column" paddingLeft={1} paddingTop={1} gap={1}>
-      <box height={13} justifyContent="center" alignItems="center" backgroundColor={theme.surface}>
+      <box height={13} justifyContent="center" alignItems="center">
         <Show when={thumb()} fallback={<text fg={theme.faint}>...</text>}>
           {() => <image source={thumb()!} fit="fit" width={42} height={12} protocol="kitty" />}
         </Show>
