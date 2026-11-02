@@ -15,8 +15,8 @@ test("home screen renders title art, search box and all quick access items", asy
   const frame = t.captureCharFrame()
   expect(frame).toContain("█") // ascii_font title art
   expect(frame).toContain("search youtube") // search box placeholder
-  expect(frame).toContain("history")
-  expect(frame).toContain("playlists")
-  expect(frame).toContain("subscriptions")
-  expect(frame).toContain("settings")
+  expect(frame).toContain("History")
+  expect(frame).toContain("Playlists")
+  expect(frame).toContain("Subscriptions")
+  expect(frame).toContain("Settings")
 })

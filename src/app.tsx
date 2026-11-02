@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import { createSignal, For, Show, type Component, onMount } from "solid-js"
+import { createSignal, For, Show, type Component } from "solid-js"
 import { useKeyboard, useRenderer, render } from "@opentui/solid"
 import { appendFileSync } from "fs"
 import type { CliRenderer } from "@opentui/core"
@@ -16,9 +16,10 @@ import {
   type Store,
   type Video,
   type Settings,
+  TITLE_FONTS,
 } from "./config"
-  import { searchVideos, searchMoreVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
-  import { play } from "./player"
+import { searchVideos, searchMoreVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
+import { play, npTime, npDur } from "./player"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
 const Span: Component<any> = (props) => <span {...props} />
@@ -29,6 +30,21 @@ type Screen = "home" | "results" | "history" | "playlists" | "subscriptions" | "
 const fmtViews = (s: string) => (/^\d+$/.test(s) ? Number(s).toLocaleString("en-US") : s)
 
 const QUICK: string[] = ["history", "playlists", "subscriptions", "settings", "quit"]
+// nerd-font glyphs (FontAwesome subset present in nerd fonts)
+const QUICK_ICON: Record<string, string> = {
+  history: "\uf1da",
+  playlists: "\uf03a",
+  subscriptions: "\uf0f3",
+  settings: "\uf013",
+  quit: "\uf011",
+}
+const QUICK_LABEL: Record<string, string> = {
+  history: "History",
+  playlists: "Playlists",
+  subscriptions: "Subscriptions",
+  settings: "Settings",
+  quit: "Quit",
+}
 const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews", "title_font"]
 const INVIDIOUS_INSTANCES: string[] = [
   "https://yt.chocolatemoo53.com",
@@ -418,41 +434,31 @@ export const App: Component = () => {
 }
 
 const NowPlaying: Component = () => {
-  const [elapsed, setElapsed] = createSignal(0)
-  let startedAt = Date.now()
-  let timer: ReturnType<typeof setInterval>
-  onMount(() => {
-    startedAt = Date.now()
-    timer = setInterval(() => setElapsed(Date.now() - startedAt), 250)
-    return () => clearInterval(timer)
-  })
   const v = npVideo
-  const bar = (frac: number) => {
-    const w = 30
-    const f = Math.max(0, Math.min(1, frac))
-    const filled = Math.round(f * w)
-    const head = Array.from({ length: filled }, () => "█").join("")
-    const tail = Array.from({ length: w - filled }, () => "░").join("")
-    return head + tail
+  const fmt = (s: number) => {
+    if (!isFinite(s) || s < 0) s = 0
+    const h = Math.floor(s / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    const sec = Math.floor(s % 60)
+    return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`
   }
-  const durSec = (() => {
-    const d = v?.duration ?? "0"
-    const parts = d.split(":")
-    const nums = parts.map((p) => parseInt(p) || 0)
-    const total = parts.length >= 3 ? nums[0]! * 3600 + nums[1]! * 60 + nums[2]! : parts.length === 2 ? nums[0]! * 60 + nums[1]! : nums[0]!
-    return total > 0 ? total : 0
-  })()
-  const frac = durSec > 0 ? Math.min(1, elapsed() / durSec) : 1
+  const bar = () => {
+    const dur = Math.max(0, npDur())
+    const f = dur > 0 ? Math.min(1, npTime() / dur) : 0
+    const filled = Math.round(f * 30)
+    return `${"█".repeat(filled)}${"░".repeat(30 - filled)}`
+  }
   return (
-    <box flexGrow={1} backgroundColor={theme.bg} flexDirection="column" justifyContent="center" alignItems="center">
+    <box backgroundColor={theme.bg} flexDirection="column" justifyContent="center" alignItems="center">
+      <text fg={theme.accent} textAlign="center">Now Playing</text>
       <box height={1} />
-      <text fg={theme.accent}>Now Playing: {v?.title ?? ""}</text>
+      <text fg={theme.fg} textAlign="center">{v?.title ?? ""}</text>
       <box height={2} />
-      <box width={34} height={1}>
-        <text fg={theme.fg}>{bar(frac)}</text>
+      <box width={30} height={1}>
+        <text fg={theme.fg}>{bar()}</text>
       </box>
-      <box height={2} />
-      <text fg={theme.faint}>{Math.round(frac * 100)}%</text>
+      <box height={1} />
+      <text fg={theme.faint}>{fmt(npTime())} / {fmt(npDur())}</text>
       <box height={2} />
     </box>
   )
@@ -560,7 +566,7 @@ function Home() {
         <text fg={theme.faint}>tab switch focus · ↑↓ move · enter open · type to search</text>
       </box>
       <box height={1} />
-      <box width="62%" maxWidth={72} alignSelf="center" paddingLeft={2}>
+      <box width="62%" maxWidth={72} alignSelf="center">
         <For each={QUICK}>
           {(item, i) => {
             const active = () => i() === quickIndex() && !inputMode()
@@ -580,8 +586,7 @@ function Home() {
                 }}
               >
                 <text fg={active() ? theme.selectionFg : theme.muted}>
-                  <Span fg={active() ? theme.selectionFg : theme.selectionBg}>{active() ? " ▸ " : "   "}</Span>
-                  {item}
+                  {QUICK_ICON[item] ?? "•"} {QUICK_LABEL[item] ?? item}
                 </text>
               </box>
             )

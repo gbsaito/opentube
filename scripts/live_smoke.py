@@ -66,7 +66,7 @@ out += read_until(idle_ms=900, total_ms=4000)
 
 text = ANSI.sub(b"", buf_all).decode("utf-8", "ignore").replace("\x0c", "\n")
 print("== PHASE0 home ==")
-for probe in ["search y", "history", "playlists", "subscriptions", "settings", "quit"]:
+for probe in ["search y", "History", "Playlists", "Subscriptions", "Settings", "Quit"]:
     print("has", repr(probe), ":", probe in text)
 
 send(b"hello"); time.sleep(0.4)
