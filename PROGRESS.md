@@ -4,6 +4,9 @@
 - [ ] Build OpenTube TUI app per PLAN.md (phases 1-3 done; phase 4 auth optional)
 
 ## status
+- Mouse/zoom features back in (45edaaa): wheel navigates (home quick menu w/o click keys; lists move selection), ctrl+wheel zooms 0.5–2 in 0.25 steps, hover/drag over list rows selects (mouse over/move), double-click on a row plays the video, click searchbox focuses it, click quick-menu row activates it. Sidebar scaled by zoom: width/pads/image scale; image centered; texts padded left/right.
+- TAB toggles focus searchbox <-> quick access (replaces the old / toggle); escape/down still unfocus; hint line on home: "tab switch focus · ↑↓ move · enter open · type to search".
+- Searchbox fixes (85e5088): image preview only when BOTH previews && image_previews; new search clears old rows immediately.
 - KEYBOARD ROOT CAUSE FOUND: kitty 0.49.2 delivered ZERO keyboard events to the app (empty keys log while running the instrumented build). Fix: launcher (bin/opentube.ts) attaches a flowing-mode stdin data listener BEFORE opentui mounts — keys now flow; raw/key logging kept opt-in via OTUI_DEBUG=1 to /tmp/opentube-raw.log and /tmp/opentube-keys.log (capped by user's bisect confirmation at commit f02170b in opentube-test).
 - Searchbox focus semantics (user request): enter submits search (any Enter key-name variant: return/kpenter/enter/linefeed, deduped against double delivery), esc (any screen) returns home focused on quick-access menu, / (from menu) returns focus to searchbox. InputRenderable natively submits on "return"; `onKeyDown` is not a real prop of @opentui/solid input.
 - opentube-test copy exists at ~/Projects/opentube-test (bisect sandbox owned by saito, launcher symlink opentube-test); delete when no longer needed.
