@@ -148,10 +148,16 @@ async function firstJson<T>(urls: string[]): Promise<T | null> {
 export async function videoMeta(id: string): Promise<VideoMeta> {
   const hit = metaCache.get(id)
   if (hit) return hit
-  let meta: VideoMeta = (await invidiousMeta(id)) ?? { description: "", date: "", views: "" }
-  if (!meta.description) {
-    // invidious instances increasingly serve empty descriptions; yt-dlp fills the gap
-    meta = { ...meta, ...(await ytdlpMeta(id)) }
+  // both fetchers race; first result with a description wins — user sees sidebar immediately
+  const ivP = invidiousMeta(id)
+  const ytP = ytdlpMeta(id)
+  const withDesc = (p: Promise<VideoMeta | null>) =>
+    p.then((m) => (m?.description ? m : Promise.reject(new Error("no-desc"))))
+  let meta = await Promise.any([withDesc(ivP), withDesc(ytP)]).catch(() => null)
+  if (!meta) {
+    // neither served a description: merge whatever came back (date/views fallback)
+    const [iv, yt] = await Promise.all([ivP.catch(() => null), ytP.catch(() => null)])
+    meta = (iv ?? yt) ? { ...(iv ?? { description: "", date: "", views: "" }), ...Object.fromEntries(Object.entries(yt ?? {}).filter(([, v]) => v)) } as VideoMeta : { description: "", date: "", views: "" }
   }
   if (meta.description || meta.date || meta.views) metaCache.set(id, meta) // failed/empty fetches stay uncached (retryable)
   return meta
