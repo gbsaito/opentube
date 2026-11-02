@@ -5,7 +5,8 @@
 - [x] Build OpenTube TUI app per PLAN.md (phases 1-3 done; phase 4 auth optional)
 
 ## status
-- Mouse/zoom: wheel = UI zoom (sidebar image scales 0.5–2x), left press/drag = range select, plain left click = select, right click = page forward. Uses `renderer.root.onMouse` (no useMouse hook exists in @opentui/solid 0.8.1).
+- Mouse: wheel scroll = navigate (quick menu on home, move selection in lists); ctrl+wheel = UI zoom (sidebar image 0.5–2x); left press+drag = range select, plain left click = select, right click = page forward. Uses `renderer.root.onMouse` (no useMouse hook exists in @opentui/solid 0.8.1).
+- Verified via pty probe: type in search, enter submits (e.g. "lorem"/"hello world" → results screen), esc leaves search (▸ marker appears), `/` toggles search/quick menu, wheel moves quick menu (down→playlists/subscriptions, up→back), kitty keyboard protocol enabled still parses return/escape/letters correctly.
 - Phase 1 (scaffold, homescreen): DONE — ascii title, search box, quick access menu.
 - Phase 2 (search + list + sidebar + playback wiring): DONE & verified live.
 - Phase 3 (quick access): DONE — history + settings functional; playlists/subscriptions visual-only (user decision).
