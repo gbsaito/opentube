@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import { createSignal, For, Show, type Component, onMount } from "solid-js"
 import { useKeyboard, useRenderer, render } from "@opentui/solid"
+import { appendFileSync } from "fs"
 import type { CliRenderer } from "@opentui/core"
 import { theme } from "./theme"
 import {
@@ -274,6 +275,7 @@ export const App: Component = () => {
   const renderer = useRenderer()
   rendererRef = renderer
   useKeyboard((e) => {
+    try { appendFileSync("/tmp/opentube-keys.log", `${Date.now()} name=${e.name} seq=${JSON.stringify(e.sequence)} type=${e.eventType}\n`) } catch {}
     if (process.env.APP_DBG) console.log("[app-keys]", e.name, screen(), editing()?.slice(0,0) ?? "")
     if (e.eventType === "release") return
 
