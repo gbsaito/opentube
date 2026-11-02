@@ -574,7 +574,7 @@ function Home() {
         padding={1}
         border={["left"]}
         borderStyle="single"
-        borderColor={theme.accentDim}
+        borderColor={settings().accent}
         backgroundColor={theme.inputBg}
         onMouseDown={(e: any) => {
           if (e.button === 0) setInputMode(true)
@@ -619,7 +619,7 @@ function Home() {
                   activateQuick(item)
                 }}
               >
-                <text fg={active() ? theme.selectionFg : theme.muted}>
+                <text fg={active() ? settings().accent : theme.muted}>
                   {QUICK_ICON[item] ?? "•"} {QUICK_LABEL[item] ?? item}
                 </text>
               </box>
@@ -644,8 +644,8 @@ const ListRow: Component<{ v: Video; selected: boolean; local: number }> = (prop
         if (e.button === 0) rowMouseDown(props.local, props.v)
       }}
     >
-      <text fg={props.selected ? theme.selectionFg : theme.fg}>
-        <Span fg={props.selected ? theme.selectionFg : theme.selectionBg}>{mark()}</Span>
+      <text fg={props.selected ? settings().accent : theme.fg}>
+        <Span fg={props.selected ? settings().accent : theme.selectionBg}>{mark()}</Span>
         {props.v.title.slice(0, 68)}
         <Show when={props.v.duration}>
           {() => <Span fg={theme.faint}> {props.v.duration}</Span>}
