@@ -271,7 +271,8 @@ async function ensurePageLoaded() {
 
 function refreshSidebar(v: Video | undefined) {
   if (v) npVideo = v
-  if (screen() === "results") void Promise.all([updateThumb(v), updateMeta(v)])
+  // results/history/playlists/subscriptions: thumb + meta fill for any list screen
+  void Promise.all([updateThumb(v), updateMeta(v)])
 }
 
 let npVideo: Video | null = null
@@ -527,7 +528,9 @@ function activateQuick(item: string | undefined) {
     setStore(history)
     setStoreIndex(0)
     setPage(0)
-    void updateMeta(history.items[0])
+    // fill missing meta for every history row (first-only fetch left the rest blank)
+    for (const v of history.items) if (v.id) void updateMeta(v)
+    void updateThumb(history.items[0])
     return setScreen("history")
   }
 }
