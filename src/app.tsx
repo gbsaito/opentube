@@ -607,7 +607,7 @@ function Home() {
             return (
               <box
                 height={1}
-                backgroundColor={active() ? settings().accent : undefined}
+                backgroundColor={active() ? `#${settings().accent.slice(1)}4d` : undefined}
                 onMouseOver={() => {
                   if (inputMode()) return // while typing, mouse hovering must not steal the menu
                   setQuickIndex(i())
@@ -637,7 +637,7 @@ const ListRow: Component<{ v: Video; selected: boolean; local: number }> = (prop
     <box
       id={`row-${props.v.id}`}
       height={1}
-      backgroundColor={props.selected ? settings().accent : undefined}
+      backgroundColor={props.selected ? `#${settings().accent.slice(1)}4d` : undefined}
       onMouseOver={() => hoverSelect(props.local, props.v)}
       onMouseMove={() => hoverSelect(props.local, props.v)}
       onMouseDown={(e: any) => {
