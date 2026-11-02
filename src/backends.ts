@@ -8,8 +8,8 @@ const INVIDIOUS = ["https://yt.chocolatemoo53.com", "https://inv.nadeko.net", "h
 // --- yt-dlp ---------------------------------------------------------------------
 // flat-playlist: fast rows (no per-video metadata crawl); missing date is filled
 // lazily by updateMeta on selection
-async function viaYtDlp(query: string): Promise<Video[]> {
-  const proc = Bun.spawn(["yt-dlp", "--dump-json", "--flat-playlist", `ytsearch${settings().results_count}:${query}`], {
+async function viaYtDlp(query: string, count?: number): Promise<Video[]> {
+  const proc = Bun.spawn(["yt-dlp", "--dump-json", "--flat-playlist", `ytsearch${count ?? settings().results_count}:${query}`], {
     stdout: "pipe",
     stderr: "ignore",
   })
@@ -29,9 +29,9 @@ async function viaYtDlp(query: string): Promise<Video[]> {
 }
 
 // --- invidious ---------------------------------------------------------------------
-async function viaInvidious(query: string): Promise<Video[]> {
+async function viaInvidious(query: string, apiPage = 1): Promise<Video[]> {
   const q = encodeURIComponent(query)
-  const arr = await getJsonAny<any[]>(candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/search?type=video&q=${q}`))
+  const arr = await getJsonAny<any[]>(candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/search?type=video&q=${q}&page=${apiPage}`))
   return arr.map((v) => ({
     id: v.videoId,
     title: v.title,
@@ -41,6 +41,26 @@ async function viaInvidious(query: string): Promise<Video[]> {
     duration: v.lengthSeconds > 0 ? fmtDuration(v.lengthSeconds) : "",
     views: String(v.viewCount ?? ""),
   }))
+}
+
+// --- pagination ---------------------------------------------------------------------
+// ponytail: invidious pages are fixed at ~20 rows; windows (results_count) may mix API page boundaries
+const INVIDIOUS_API_PAGE = 20
+
+/** rows so that the caller holds exactly `target` rows (fewer when results ran out) */
+export async function searchMoreVideos(query: string, offset: number, target: number): Promise<Video[]> {
+  const s = settings()
+  if (s.backend === "yt-dlp") {
+    const rows = await viaYtDlp(query, target)
+    return rows.slice(offset, target)
+  }
+  const out: Video[] = []
+  for (let apiPage = Math.floor(offset / INVIDIOUS_API_PAGE) + 1; offset + out.length < target; apiPage++) {
+    const rows = await viaInvidious(query, apiPage)
+    if (rows.length === 0) break
+    out.push(...rows)
+  }
+  return out
 }
 
 /** strip html tags + entities, collapse whitespace, cap length */

@@ -15,7 +15,7 @@ import {
   type Store,
   type Video,
 } from "./config"
-import { searchVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
+import { searchVideos, searchMoreVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
 import { play } from "./player"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
@@ -40,7 +40,7 @@ const INVIDIOUS_INSTANCES: string[] = [
   "https://inv.nadeko.ygg",
 ]
 const BACKEND_ORDER: BackendKey[] = ["yt-dlp", "invidious"]
-const HINTS = "↑↓/jk move · enter play · p audio · s subscribe · l add playlist · d delete · q quit · esc back"
+const HINTS = "↑↓/jk move · ←→ page · enter play · p audio · s subscribe · l add playlist · d delete · q quit · esc back"
 
 // --- app state -----------------------------------------------------------------
 const [screen, setScreen] = createSignal<Screen>("home")
@@ -53,6 +53,11 @@ const [loading, setLoading] = createSignal(false)
 const [error, setError] = createSignal("")
 const [store, setStore] = createSignal<Store | null>(null)
 const [storeIndex, setStoreIndex] = createSignal(0)
+
+// pagination: one window size for every list screen; results fetch extra pages on demand
+const [page, setPage] = createSignal(0)
+const [loadingMore, setLoadingMore] = createSignal(false)
+const [exhausted, setExhausted] = createSignal(false)
 
 // settings screen state
 const [sRow, setSRow] = createSignal(0)
@@ -121,6 +126,21 @@ function currentVideo(): Video | undefined {
   return currentList()[currentIndex()]
 }
 
+// pagination helpers (shared by every list screen)
+function pageSize(): number {
+  return Math.max(1, Math.round(settings().results_count))
+}
+function pageCount(): number {
+  return Math.max(1, Math.ceil(currentList().length / pageSize()))
+}
+function visibleList(): Video[] {
+  const size = pageSize()
+  return currentList().slice(page() * size, (page() + 1) * size)
+}
+function localFocus(): number {
+  return currentIndex() - page() * pageSize()
+}
+
 let rendererRef: CliRenderer | null = null
 
 async function quitApp() {
@@ -133,6 +153,8 @@ async function doSearch(q: string) {
   if (!q.trim()) return
   setQuery(q)
   setScreen("results")
+  setPage(0)
+  setExhausted(false)
   setLoading(true)
   setError("")
   setSel(0)
@@ -148,15 +170,59 @@ async function doSearch(q: string) {
   }
 }
 
+function refreshSidebar(v: Video | undefined) {
+  if (screen() === "results") void updateThumb(v)
+  void updateMeta(v)
+}
+
 function moveSelection(delta: number) {
-  const list = currentList()
+  const list = visibleList()
   if (list.length === 0) return
-  const next = (currentIndex() + delta + list.length) % list.length
-  ;(screen() === "results" ? setSel : setStoreIndex)(next)
-  const picked = list[next]
-  if (picked) listScrollRef?.scrollChildIntoView(`row-${picked.id}`, { align: "nearest" })
-  if (screen() === "results") void updateThumb(picked)
-  void updateMeta(picked)
+  const local = Math.min(localFocus(), list.length - 1)
+  const base = page() * pageSize()
+  const nextLocal = (local + delta + list.length) % list.length
+  ;(screen() === "results" ? setSel : setStoreIndex)(base + nextLocal)
+  const picked = list[nextLocal]!
+  listScrollRef?.scrollChildIntoView(`row-${picked.id}`, { align: "nearest" })
+  refreshSidebar(picked)
+}
+
+/** one shared pager: history/playlists window the stored rows; results lazily fetch more rows behind the window */
+async function goPage(dir: 1 | -1) {
+  const next = page() + dir
+  if (next < 0) return
+  if (next >= pageCount() && (screen() !== "results" || exhausted())) return
+  setPage(next)
+  // keep the cursor inside the new window
+  const start = next * pageSize()
+  const list = visibleList()
+  if (list.length > 0) {
+    const focus = Math.min(localFocus(), list.length - 1)
+    ;(screen() === "results" ? setSel : setStoreIndex)(start + focus)
+  }
+  refreshSidebar(currentVideo())
+  listScrollRef?.scrollChildIntoView(`row-${currentVideo()?.id}`, { align: "start" })
+  await ensurePageLoaded()
+}
+
+/** fetch behind-the-window rows when paging forward in results */
+async function ensurePageLoaded() {
+  if (screen() !== "results" || exhausted() || loadingMore()) return
+  const size = pageSize()
+  const target = (page() + 1) * size
+  const before = videos().length
+  if (before >= target) return
+  setLoadingMore(true)
+  try {
+    const more = await searchMoreVideos(query(), before, target)
+    const seen = new Set(videos().map((v) => v.id))
+    setVideos([...videos(), ...more.filter((v) => v.id && !seen.has(v.id))])
+    if (videos().length < target) setExhausted(true)
+  } catch {
+    setExhausted(true) // continuation failure: no more pages, keep current rows
+  } finally {
+    setLoadingMore(false)
+  }
 }
 
 function playCurrent(mode: "video" | "audio") {
@@ -183,7 +249,13 @@ function likeCurrent() {
 }
 function deleteCurrent() {
   const v = currentVideo()
-  if (store() && v && screen() !== "results") store()!.remove(v.id)
+  if (store() && v && screen() !== "results") {
+    store()!.remove(v.id)
+    if (page() >= pageCount()) setPage(pageCount() - 1) // page may have emptied
+    const focus = Math.min(localFocus(), Math.max(0, visibleList().length - 1))
+    setStoreIndex(page() * pageSize() + focus)
+    refreshSidebar(currentVideo())
+  }
 }
 
 // --- keyboard routing -----------------------------------------------------------------
@@ -251,6 +323,10 @@ export const App: Component = () => {
       case "down":
       case "j":
         return moveSelection(1)
+      case "left":
+        return void goPage(-1)
+      case "right":
+        return void goPage(1)
       case "return":
         return playCurrent("video")
       case "p":
@@ -287,6 +363,9 @@ const Chrome: Component<{ title: string }> = (props) => (
       <Span fg={theme.accent}>opentube</Span>
       <Span fg={theme.faint}> › </Span>
       <Span fg={theme.muted}>{props.title}</Span>
+      <Show when={pageCount() > 1}>
+        {() => <Span fg={theme.faint}> · page {page() + 1}/{pageCount()}{exhausted() ? "" : "+"}</Span>}
+      </Show>
     </text>
   </box>
 )
@@ -314,6 +393,7 @@ function homeKeys(e: { name: string; preventDefault(): void }) {
     if (item === "history") {
       setStore(history)
       setStoreIndex(0)
+      setPage(0)
       void updateMeta(history.items[0])
       return setScreen("history")
     }
@@ -394,7 +474,10 @@ function Results() {
         <Show when={loading()}>{() => <ListHint text={`searching via ${settings().backend}…`} />}</Show>
         <Show when={!!error()}>{() => <ListHint text={`error: ${error()}`} color={theme.accentDim} />}</Show>
         <Show when={!loading() && !error() && videos().length === 0}>{() => <ListHint text="no results" />}</Show>
-        <For each={videos()}>{(v, i) => <ListRow v={v} selected={i() === sel()} />}</For>
+        <For each={visibleList()}>{(v, i) => <ListRow v={v} selected={i() === localFocus()} />}</For>
+        <Show when={loadingMore()}>
+          {() => <ListHint text="loading more…" />}
+        </Show>
       </scrollbox>
       <Sidebar />
     </box>
@@ -408,7 +491,7 @@ function StoreScreen() {
       <scrollbox ref={(el: any) => (listScrollRef = el)} scrollY flexGrow={1} border={["right"]} borderStyle="single" borderColor={theme.surfaceBorder}>
         <Show when={items().length === 0}>{() => <ListHint text="nothing here yet" />}
         </Show>
-        <For each={items()}>{(v, i) => <ListRow v={v} selected={i() === storeIndex()} />}</For>
+        <For each={visibleList()}>{(v, i) => <ListRow v={v} selected={i() === localFocus()} />}</For>
       </scrollbox>
       <Sidebar />
     </box>
