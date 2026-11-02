@@ -5,8 +5,9 @@
 - [x] Build OpenTube TUI app per PLAN.md (phases 1-3 done; phase 4 auth optional)
 
 ## status
-- Mouse: wheel scroll = navigate (quick menu on home, move selection in lists); ctrl+wheel = UI zoom (sidebar image 0.5–2x); left press+drag = range select, plain left click = select, right click = page forward. Uses `renderer.root.onMouse` (no useMouse hook exists in @opentui/solid 0.8.1).
-- Verified via pty probe: type in search, enter submits (e.g. "lorem"/"hello world" → results screen), esc leaves search (▸ marker appears), `/` toggles search/quick menu, wheel moves quick menu (down→playlists/subscriptions, up→back), kitty keyboard protocol enabled still parses return/escape/letters correctly.
+- Mouse: wheel = navigate (quick menu on home, move selection in lists); ctrl+wheel = zoom (sidebar image 0.5–2x); left press+drag = range select, plain left click = select, right click = page forward. Uses `renderer.root.onMouse` (no useMouse hook exists in @opentui/solid 0.8.1).
+- Keyboard/input restored byte-identical to pre-mouse commit 159add0 (input JSX, homeKeys, results-esc → home re-focusing searchbox). Mouse+zoom is the only delta over that baseline.
+- Verified via pty probes + scripts/live_smoke.py: type in search, enter submits (results screen, "searching via <backend>…"), esc returns home (searchbox focused, per original), `/` toggles search/quick menu, wheel moves quick menu, kitty CSI 27u/27;1u parse as escape, kitty-protocol keys intact.
 - Phase 1 (scaffold, homescreen): DONE — ascii title, search box, quick access menu.
 - Phase 2 (search + list + sidebar + playback wiring): DONE & verified live.
 - Phase 3 (quick access): DONE — history + settings functional; playlists/subscriptions visual-only (user decision).
