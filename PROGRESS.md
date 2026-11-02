@@ -52,6 +52,9 @@
 - Sidebar description now shows: fetched lazily per selection.
 - yt-dlp "infinite" search: was full-metadata crawl (~90s); now fast flat rows + lazy date fill.
 
+## bugs/ongoing (session log)
+- Wedge root-cause loop 2026-11-02: raw stdin bytes reach bun (ours log) + core (OTUI_STDIN_LOG) + parse (keys log) + app handlers (screen/inputMode/query) all fine, incl. kitty CSI-u bytes (`ESC[27u`) + lump chunks. Search fired (screen home->results via 'return'), render loop alive (resize redraw / post-lump char redraw OK). Remaining suspect: render-burst on screen-transition; NOT yet fixed. User-side: frozen TUI in kitty/ghostty/alacritty.
+
 ## pending user test
 - Settings: left/right cycles backend / invidious instance; enter edits results_count (cursor + backspace).
 - yt-dlp search returns rows in seconds; sidebar date fills after selection.
