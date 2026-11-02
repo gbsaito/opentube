@@ -23,6 +23,7 @@ export interface Settings {
   image_previews: boolean // thumbnail
   image_renderer: "auto" | "icat" | "sixel" | "chafa"
   title_font: "tiny" | "block" | "shade" | "slick" | "huge" | "grid" | "pallet"
+  accent: string
 }
 
 const DEFAULTS: Settings = {
@@ -33,11 +34,13 @@ const DEFAULTS: Settings = {
   image_previews: true,
   image_renderer: "auto",
   title_font: "block",
+  accent: "#c084fc",
 }
 
 const RENDERERS: readonly Settings["image_renderer"][] = ["auto", "icat", "sixel", "chafa"]
 const FONTS: readonly Settings["title_font"][] = ["tiny", "block"] // user asked: maintain only tiny/block
 export const TITLE_FONTS = FONTS
+export const ACCENT_COLORS: readonly string[] = ["#c084fc", "#58a6ff", "#3fb950", "#f2cc60", "#f47067"]
 
 export const [settings, setSettings] = createSignal<Settings>(DEFAULTS)
 
@@ -62,6 +65,7 @@ export function loadSettings() {
     const imagePreviews = conf["image_previews"] !== undefined ? conf["image_previews"] === "true" : DEFAULTS.image_previews
     const imageRenderer = RENDERERS.includes(conf["image_renderer"] as Settings["image_renderer"]) ? (conf["image_renderer"] as Settings["image_renderer"]) : DEFAULTS.image_renderer
     const titleFont = FONTS.includes(conf["title_font"] as Settings["title_font"]) ? (conf["title_font"] as Settings["title_font"]) : DEFAULTS.title_font
+    const accent = conf.accent && ACCENT_COLORS.includes(conf.accent) ? conf.accent : DEFAULTS.accent
     setSettings({
       ...DEFAULTS,
       backend,
@@ -71,6 +75,7 @@ export function loadSettings() {
       image_previews: imagePreviews,
       image_renderer: imageRenderer,
       title_font: titleFont,
+      accent,
     } as Settings)
   } catch {
     // no conf yet -> defaults
@@ -91,6 +96,7 @@ export function saveConf() {
       `image_previews = ${s.image_previews}`,
       `image_renderer = ${s.image_renderer}`,
       `title_font = ${s.title_font}`,
+      `accent = ${s.accent}`,
     ].join("\n") + "\n",
   )
 }

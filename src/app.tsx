@@ -17,6 +17,7 @@ import {
   type Video,
   type Settings,
   TITLE_FONTS,
+  ACCENT_COLORS,
 } from "./config"
 import { searchVideos, searchMoreVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
 import { play, npTime, npDur, stopPlayback, togglePause, seekTo } from "./player"
@@ -45,7 +46,7 @@ const QUICK_LABEL: Record<string, string> = {
   settings: "Settings",
   quit: "Quit",
 }
-const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews", "title_font"]
+const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews", "title_font", "accent"]
 const INVIDIOUS_INSTANCES: string[] = [
   "https://yt.chocolatemoo53.com",
   "https://inv.nadeko.net",
@@ -369,6 +370,10 @@ export const App: Component = () => {
           const idx = TITLE_FONTS.indexOf(s.title_font)
           const next = TITLE_FONTS[(idx + dir + TITLE_FONTS.length) % TITLE_FONTS.length]!
           setSettings({ ...settings(), title_font: next } as any)
+        } else if (row === "accent") {
+          const idx = ACCENT_COLORS.indexOf(s.accent)
+          const next = ACCENT_COLORS[(idx + dir + ACCENT_COLORS.length) % ACCENT_COLORS.length]!
+          setSettings({ ...settings(), accent: next } as any)
         } else if (row === "invidious_instance") {
           const idx = INVIDIOUS_INSTANCES.indexOf(settings().invidious_instance)
           const next = idx < 0 ? (dir < 0 ? INVIDIOUS_INSTANCES.length - 1 : 0) : INVIDIOUS_INSTANCES[(idx + dir + INVIDIOUS_INSTANCES.length) % INVIDIOUS_INSTANCES.length]!
@@ -470,7 +475,7 @@ const NowPlaying: Component = () => {
   }
   return (
     <box flexGrow={1} backgroundColor={theme.bg} flexDirection="column" justifyContent="center" alignItems="center">
-      <text fg={theme.accent} textAlign="center">Now Playing</text>
+      <text fg={settings().accent} textAlign="center">Now Playing</text>
       <box height={1} />
       <text fg={theme.fg} textAlign="center">{v?.title ?? ""}</text>
       <box height={2} />
@@ -497,7 +502,7 @@ const NonHomeScreens: Component = () => (
 const Chrome: Component<{ title: string }> = (props) => (
   <box height={1} paddingLeft={2} backgroundColor={theme.bg}>
     <text>
-      <Span fg={theme.accent}>opentube</Span>
+      <Span fg={settings().accent}>opentube</Span>
       <Span fg={theme.faint}> › </Span>
       <Span fg={theme.muted}>{props.title}</Span>
       <Show when={pageCount() > 1}>
@@ -558,7 +563,7 @@ function Home() {
   return (
     <box flexGrow={1} backgroundColor={theme.bg} justifyContent="center" alignItems="center">
       <box height={1} />
-      <ascii_font text="opentube" font={settings().title_font} color={theme.accent} />
+      <ascii_font text="opentube" font={settings().title_font} color={settings().accent} />
       <box height={2} />
       <box
         width="62%"
@@ -771,7 +776,7 @@ function Settings() {
           return (
             <box height={1}>
               <text>
-                <Span fg={focused() ? theme.accent : theme.selectionBg}>{focused() ? " ▸ " : "   "}</Span>
+                <Span fg={focused() ? settings().accent : theme.selectionBg}>{focused() ? " ▸ " : "   "}</Span>
                 <Span fg={focused() ? theme.selectionFg : theme.muted}>{row} = </Span>
                 <Show when={!isEditing()}>
                   <Span fg={focused() ? theme.selectionFg : theme.fg}>{value()}</Span>
@@ -781,7 +786,7 @@ function Settings() {
                     <>
                       <Span fg={theme.selectionFg}>editing: </Span>
                       <Span fg={theme.fg}>{editBuf()}</Span>
-                      <Span fg={theme.accent}>█</Span>
+                      <Span fg={settings().accent}>█</Span>
                     </>
                   )}
                 </Show>
