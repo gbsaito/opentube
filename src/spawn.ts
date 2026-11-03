@@ -1,5 +1,5 @@
-// tiny concurrency limiter so scroll bursts can't spawn dozens of yt-dlp processes
-const MAX = 4
+// tiny limiter so spawn bursts can't run away — yt-dlp is network-bound, 6 concurrent is safe
+const MAX = 6
 let running = 0
 const queue: Array<() => void> = []
 

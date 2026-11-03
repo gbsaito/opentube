@@ -1171,10 +1171,11 @@ const Sidebar: Component = () => {
                 <Span fg={theme.muted}>Duration: </Span>
                 <Span fg={theme.fg}>{v()?.duration || sidebarMeta()?.duration || ""}</Span>
               </text>
-              <Show when={v()?.description || sidebarMeta()?.description}>
+              <Show when={sidebarMeta()?.description}>
                 {() => {
-                  // sidebar gets a snippet only: first lines, short cap (full text lives in the d-modal)
-                  const desc = sidebarMeta()?.description || v()?.description || ""
+                  // full metadata only: no short/flat snippet fallback — an empty area until the
+                  // full text lands (row descriptions are yt-dlp flat-search fragments, not full)
+                  const desc = sidebarMeta()?.description || ""
                   const shown = desc
                     .split(/\r\n|\r|\n/)
                     .map((l) => l.trim())

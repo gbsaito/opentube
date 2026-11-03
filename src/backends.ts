@@ -222,12 +222,20 @@ function mergeMeta(iv: VideoMeta | null, yt: VideoMeta | null): VideoMeta {
   }
 }
 
-// one fetch task per id: fast phase = invidious snapshot (~1s), slow phase = yt-dlp
-// ONLY when invidious left a field empty (saves a ~2-8s CPU spawn per selection)
+// one task per id (deduped): invidious snapshot + yt-dlp watch page run IN PARALLEL — the watch
+// page is the only thing that carries descriptions today (all reachable invidious instances ship
+// none), and the old sequential await stacked ~2s api + queue + spawn (~15s perceived)
 type MetaTask = { fast: Promise<VideoMeta>; full: Promise<VideoMeta> }
-let inflight: { id: string; task: MetaTask } | null = null
+const inflight = new Map<string, MetaTask>()
 
-const isFull = (m: VideoMeta) => !!(m.description && m.date && m.views && m.duration)
+function taskFor(id: string, front = false): MetaTask {
+  let task = inflight.get(id)
+  if (task) return task
+  task = metaTask(id, front)
+  inflight.set(id, task)
+  task.full.catch(() => {}).finally(() => { if (inflight.get(id) === task) inflight.delete(id) })
+  return task
+}
 
 function metaTask(id: string, front = false): MetaTask {
   const ivP = invidiousMeta(id)
@@ -237,18 +245,15 @@ function metaTask(id: string, front = false): MetaTask {
       putCache(id, meta)
       return meta
     })
-  // slow phase: merge in the yt-dlp source only for the fields invidious lacks
-  const full = ivP.then(async (iv) => {
-    let meta = mergeMeta(iv, null)
-    if (isFull(meta)) {
+  // ponytail: yt-dlp spawns unconditionally now; stop it again if an invidious instance with
+  // descriptions shows up (then gate on isFull like the old sequential version)
+  const ytP = ytdlpMeta(id, front).catch(() => null)
+  const full = Promise.all([ivP, ytP])
+    .then(([iv, yt]) => {
+      const meta = mergeMeta(iv, yt)
       putCache(id, meta)
       return meta
-    }
-    const yt = await ytdlpMeta(id, front).catch(() => null)
-    meta = mergeMeta(iv, yt)
-    putCache(id, meta)
-    return meta
-  })
+    })
   return { fast, full }
 }
 
@@ -257,8 +262,7 @@ function metaTask(id: string, front = false): MetaTask {
 export async function videoMeta(id: string): Promise<VideoMeta> {
   const hit = metaCache.get(id)
   if (hit) return hit
-  if (inflight?.id !== id) inflight = { id, task: metaTask(id) }
-  return inflight.task.fast
+  return taskFor(id).fast
 }
 
 /** complete merged metadata: waits for both sources, merges every non-empty field;
@@ -266,8 +270,7 @@ export async function videoMeta(id: string): Promise<VideoMeta> {
 export async function videoMetaFull(id: string, front = false): Promise<VideoMeta> {
   const cached = metaCache.get(id)
   if (cached && cached.description && cached.date && cached.views && cached.duration) return cached
-  if (inflight?.id !== id) inflight = { id, task: metaTask(id, front) }
-  return inflight.task.full
+  return taskFor(id, front).full
 }
 
 async function invidiousMeta(id: string): Promise<VideoMeta | null> {
@@ -283,25 +286,25 @@ async function invidiousMeta(id: string): Promise<VideoMeta | null> {
 }
 
 async function ytdlpMeta(id: string, front = false): Promise<VideoMeta> {
-  try {
-    return await limit(() =>
-      (async () => {
-        const proc = Bun.spawn(
-          // player_client bypasses the YouTube bot-check that blocks default clients today
+  const run = async () => {
+    const proc = Bun.spawn(
+      // player_client bypasses the YouTube bot-check that blocks default clients today
       ["yt-dlp", "--no-warnings", "--socket-timeout", "5", "--extractor-args", "youtube:player_client=mweb,tv", "--dump-json", `https://www.youtube.com/watch?v=${id}`],
-          { stdout: "pipe", stderr: "ignore" },
-        )
-        const text = await new Response(proc.stdout).text()
-        const j = JSON.parse(text) as any
-        return {
-          title: j.title ?? "",
-          description: clean(j.description ?? ""),
-          date: j.upload_date ? `${j.upload_date.slice(0, 4)}-${j.upload_date.slice(4, 6)}-${j.upload_date.slice(6, 8)}` : "",
-          views: String(j.view_count ?? ""),
-          duration: j.duration ? fmtDuration(j.duration) : "",
-        }
-      })(),
+      { stdout: "pipe", stderr: "ignore" },
     )
+    const text = await new Response(proc.stdout).text()
+    const j = JSON.parse(text) as any
+    return {
+      title: j.title ?? "",
+      description: clean(j.description ?? ""),
+      date: j.upload_date ? `${j.upload_date.slice(0, 4)}-${j.upload_date.slice(4, 6)}-${j.upload_date.slice(6, 8)}` : "",
+      views: String(j.view_count ?? ""),
+      duration: j.duration ? fmtDuration(j.duration) : "",
+    }
+  }
+  // ponytail: pass `run` UNINVOKED — wrapping an IIFE made all spawns bypass limit() and thrash
+  try {
+    return await limit(run, front)
   } catch {
     return EMPTY_META
   }
