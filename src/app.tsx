@@ -1150,13 +1150,12 @@ function Home() {
         />
       </box>
       <box height={1} />
-      {(!inputMode() || !suggestOpen()) && (
-        <>
-          <box width="62%" maxWidth={72} alignSelf="center">
-            <text fg={theme.faint}>{`tab switch · ↑↓ move · enter open${settings().prompt_history ? " · / history" : ""}`}</text>
-          </box>
-          <box height={1} />
-          <box width="62%" maxWidth={72} alignSelf="center">
+      <Show when={!inputMode() || !suggestOpen()}>
+        <box width="62%" maxWidth={72} alignSelf="center">
+          <text fg={theme.faint}>{`tab switch · ↑↓ move · enter open${settings().prompt_history ? " · / history" : ""}`}</text>
+        </box>
+        <box height={1} />
+        <box width="62%" maxWidth={72} alignSelf="center">
             <For each={QUICK}>
               {(item, i) => {
                 const active = () => i() === quickIndex() && !inputMode()
@@ -1178,10 +1177,9 @@ function Home() {
                 )
               }}
             </For>
-          </box>
-        </>
-      )}
-      {suggestOpen() && inputMode() && (
+        </box>
+      </Show>
+      <Show when={suggestOpen() && inputMode()}>
         <box width="62%" maxWidth={72} alignSelf="center" border={["left"]} borderStyle="single" borderColor={theme.muted}>
           <For each={sugList()}>
             {(s, i) => {
@@ -1194,7 +1192,7 @@ function Home() {
             }}
           </For>
         </box>
-      )}
+      </Show>
     </box>
   )
 }
