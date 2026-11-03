@@ -174,6 +174,8 @@ async function invidiousUrls(id: string, mode: "video" | "audio"): Promise<Media
     const ac = kv.find(([k]) => k === "acont")
     return ac ? String(ac[1] ?? "") : "unknown"
   }
+  const p = (s: any) => String(s ?? "").toLowerCase().split(/[-_]/)[0]!
+  const orig = String(j.original_language ?? j.language ?? "").trim().toLowerCase()
   // prefer original: first by acont==original, then skip all dubbed tracks, then any
   const audio = aud.find((f) => orig && p(f.language) === p(orig))
     || aud.find((f) => acont(f) === "original")
