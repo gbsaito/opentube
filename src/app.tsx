@@ -183,6 +183,8 @@ async function fillOriginalTitles(body: Video[], visibleIds: string[]) {
 
 // description modal (d on a list row): full text, links clickable
 const [descFrom, setDescFrom] = createSignal<Screen | null>(null)
+// where the user opened the current video from (results/history/playlists/...); esc from now-playing returns here
+const [playFrom, setPlayFrom] = createSignal<Screen | null>(null)
 const [descText, setDescText] = createSignal("")
 let descId = ""
 /** fast snapshot first (invidious ~1-2s), then the yt-dlp phase replaces it when it lands */
@@ -461,13 +463,14 @@ function playCurrent(mode: "video" | "audio") {
   history.add(withMeta(v))
   npVideo = v
   npStart = Date.now()
+  setPlayFrom(screen()) // esc from now-playing returns to where this video was opened from
   setScreen("nowplaying")
 }
 
 // active mpv exited on its own (ended / killed externally): don't sit on a frozen now-playing screen
 onPlaybackEnd(() => {
   if (screen() === "nowplaying") {
-    setScreen("results")
+    setScreen(playFrom() ?? "results")
     setInputMode(false)
   }
 })
@@ -626,12 +629,13 @@ export const App: Component = () => {
       return
     }
 
-    // now playing: esc quits mpv and goes back to the last search query; p toggles pause; left/right seek
+    // now playing: esc quits mpv and goes back to where the video was opened from; p toggles pause; left/right seek
     if (screen() === "nowplaying") {
       if (e.name === "escape") {
         void stopPlayback() // quit mpv (video+audio)
-        setScreen("results")
-        setQuery(lastSearch.q) // back to the query searched last
+        const from = playFrom() // where this video was opened from (history/results/...)
+        setScreen(from ?? "results")
+        if (from === "results") setQuery(lastSearch.q) // back to the query searched last
         setLoading(false)
         return
       }
