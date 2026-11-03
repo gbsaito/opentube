@@ -20,8 +20,9 @@ import {
   ACCENT_COLORS,
   QUALITY_ORDER,
 } from "./config"
-import { searchVideos, searchMoreVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
+import { searchVideos, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
 import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear, stopPlayback, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
+import { settle } from "./spawn"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
 const Span: Component<any> = (props) => <span {...props} />
@@ -96,7 +97,8 @@ function commitEdit() {
   setEditing(null)
 }
 
-// lazy per-selection metadata fill: invidious rows lack description, yt-dlp flat rows lack date/views
+// lazy per-selection metadata fill: invidious rows lack description, yt-dlp flat rows lack views;
+// two phases so the sidebar fills fast (invidious ~1s) and completes (yt-dlp dump) right after
 const [sidebarMeta, setSidebarMeta] = createSignal<VideoMeta | null>(null)
 let metaId = ""
 async function updateMeta(v: Video | undefined) {
@@ -105,11 +107,15 @@ async function updateMeta(v: Video | undefined) {
     metaId = ""
     return setSidebarMeta(null)
   }
-  if (metaId === id || (v.description && v.date && v.views)) return // nothing to fill
+  if (metaId === id) return // already filling/shown this row
   metaId = id
-  setSidebarMeta(null)
-  const m = await videoMeta(id)
-  if (metaId === id) setSidebarMeta(m) // ignore stale responses
+  const full = v.description && v.date && v.views // row carries everything
+  const show = (m: VideoMeta) => {
+    if (metaId === id) setSidebarMeta(m) // ignore stale responses
+  }
+  if (full) return setSidebarMeta(null)
+  show(await videoMeta(id))
+  show(await videoMetaFull(id))
 }
 
 // sidebar thumbnail
@@ -169,6 +175,7 @@ const [zoomLevel, setZoomLevel] = createSignal(1)
 // mouse: hovering a row selects it, double-click interacts (plays)
 let lastClick = { id: "", at: 0 }
 function hoverSelect(local: number, v: Video | undefined) {
+  try { if (process.env.APP_DBG) appendFileSync("/tmp/opentube-keys.log", `${Date.now()} [hover] local=${local} id=${v?.id} screen=${screen()}\n`) } catch {}
   if (!v || screen() === "home" || screen() === "settings" || screen() === "nowplaying") return
   const list = visibleList()
   if (local >= list.length) return
@@ -272,11 +279,19 @@ async function ensurePageLoaded() {
 
 function refreshSidebar(v: Video | undefined) {
   if (v) npVideo = v
-  // prefetch mpv play URLs on selection → play starts in ~1s when prewarmed
-  void prewarm(v)
-  // results/history/playlists/subscriptions: thumb + meta fill for any list screen
-  void Promise.all([updateThumb(v), updateMeta(v)])
+  const row = v
+  if (screen() === "home" || screen() === "settings") return // no sidebar there
+  if (sidebarRow === row?.id) return // same row: nothing new to fetch
+  sidebarRow = row?.id
+  // defer prewarm + meta fetches ~350ms past cursor settling: scrolling across rows
+  // doesn't fire one yt-dlp/meta spawn per row (was freezing the whole PC at 50 results)
+  sidebarDeferrer(() => {
+    prewarm(row)
+    void Promise.all([updateThumb(row), updateMeta(row)])
+  })
 }
+let sidebarRow: string | undefined
+const sidebarDeferrer = settle(350, (fn: () => void) => fn())
 
 let npVideo: Video | null = null
 let npStart = 0
@@ -323,6 +338,7 @@ export const App: Component = () => {
   rendererRef = renderer
   // global mouse: scroll navigates, ctrl+scroll zooms
   renderer.root.onMouse = (e) => {
+    try { if (process.env.APP_DBG) appendFileSync("/tmp/opentube-keys.log", `${Date.now()} [rootmouse] type=${e.type} screen=${screen()} useMouse=${(renderer as any)._useMouse}\n`) } catch {}
     if (e.type !== "scroll") return
     const dir = e.scroll?.direction === "up" ? -1 : 1
     if (e.modifiers.ctrl) {
@@ -791,6 +807,10 @@ const Sidebar: Component = () => {
               <text>
                 <Span fg={theme.muted}>Views: </Span>
                 <Span fg={theme.fg}>{fmtViews(v()!.views || sidebarMeta()?.views || "")}</Span>
+              </text>
+              <text>
+                <Span fg={theme.muted}>Duration: </Span>
+                <Span fg={theme.fg}>{v()!.duration || sidebarMeta()?.duration || ""}</Span>
               </text>
               <Show when={v()!.description || sidebarMeta()?.description}>
                 {() => {

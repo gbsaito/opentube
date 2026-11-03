@@ -1,4 +1,5 @@
 import { settings, type Video } from "./config"
+import { limit } from "./spawn"
 
 export type BackendKey = "yt-dlp" | "invidious"
 
@@ -121,7 +122,10 @@ export interface VideoMeta {
   description: string
   date: string
   views: string
+  duration: string
 }
+
+const EMPTY_META: VideoMeta = { description: "", date: "", views: "", duration: "" }
 
 const metaCache = new Map<string, VideoMeta>()
 /** meta already fetched this session (no network) */
@@ -129,62 +133,104 @@ export function cachedMeta(id: string): VideoMeta | undefined {
   return metaCache.get(id)
 }
 
-/** race all candidates, first success wins — dead instances no longer stall the response */
-async function firstJson<T>(urls: string[]): Promise<T | null> {
+function putCache(id: string, m: VideoMeta) {
+  if (m.description || m.date || m.views || m.duration) metaCache.set(id, m) // failed/empty fetches stay uncached (retryable)
+}
+
+/** merge both sources field-by-field: first non-empty wins (invidious preferred: usually fastest) */
+function mergeMeta(iv: VideoMeta | null, yt: VideoMeta | null): VideoMeta {
+  return {
+    description: iv?.description || yt?.description || "",
+    date: iv?.date || yt?.date || "",
+    views: iv?.views || yt?.views || "",
+    duration: iv?.duration || yt?.duration || "",
+  }
+}
+
+// one fetch task per id: fast phase = first source with any field, slow phase = both merged
+type MetaTask = { fast: Promise<VideoMeta>; full: Promise<VideoMeta> }
+let inflight: { id: string; task: MetaTask } | null = null
+
+function metaTask(id: string): MetaTask {
+  const ivP = invidiousMeta(id)
+  const ytP = ytdlpMeta(id)
+  const hasAny = (p: Promise<VideoMeta | null>) =>
+    p.then((m) => (m && (m.description || m.date || m.views || m.duration) ? m : Promise.reject(new Error("empty"))))
+  const fast = Promise.any([hasAny(ivP), hasAny(ytP)])
+    .catch(() => null)
+    .then((m) => {
+      const meta = m ?? EMPTY_META
+      putCache(id, meta)
+      return meta
+    })
+  // slow phase: wait for both, merge every non-empty field, refresh the cache
+  const full = Promise.all([ivP.catch(() => null), ytP.catch(() => null)])
+    .then(([iv, yt]) => {
+      const meta = mergeMeta(iv, yt)
+      putCache(id, meta)
+      return meta
+    })
+  return { fast, full }
+}
+
+/** lazy per-video metadata: invidious search rows ship no description, yt-dlp flat rows no views;
+ *  returns the first available snapshot (usually ~1s from an invidious instance) */
+export async function videoMeta(id: string): Promise<VideoMeta> {
+  const hit = metaCache.get(id)
+  if (hit) return hit
+  if (inflight?.id !== id) inflight = { id, task: metaTask(id) }
+  return inflight.task.fast
+}
+
+/** complete merged metadata: waits for both sources, merges every non-empty field */
+export async function videoMetaFull(id: string): Promise<VideoMeta> {
+  const cached = metaCache.get(id)
+  if (cached && cached.description && cached.date && cached.views && cached.duration) return cached
+  if (inflight?.id !== id) inflight = { id, task: metaTask(id) }
+  return inflight.task.full
+}
+
+async function invidiousMeta(id: string): Promise<VideoMeta | null> {
+  const urls = candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/videos/${id}`)
   try {
-    return await Promise.any(
+    const j = await Promise.any(
       urls.map(async (u) => {
-        const res = await fetch(u, { signal: AbortSignal.timeout(5000) })
+        const res = await fetch(u, { signal: AbortSignal.timeout(4000) })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return (await res.json()) as T
+        return (await res.json()) as any
       }),
     )
+    return {
+      description: clean(String(j.description ?? j.descriptionHtml ?? "")),
+      date: j.publishedText ?? "",
+      views: String(j.viewCount ?? ""),
+      duration: j.lengthSeconds > 0 ? fmtDuration(j.lengthSeconds) : "",
+    }
   } catch {
     return null
   }
 }
 
-/** lazy per-video metadata: invidious search rows ship no description, yt-dlp flat rows no date/views */
-export async function videoMeta(id: string): Promise<VideoMeta> {
-  const hit = metaCache.get(id)
-  if (hit) return hit
-  // both fetchers race; first result with a description wins — user sees sidebar immediately
-  const ivP = invidiousMeta(id)
-  const ytP = ytdlpMeta(id)
-  const withDesc = (p: Promise<VideoMeta | null>) =>
-    p.then((m) => (m?.description ? m : Promise.reject(new Error("no-desc"))))
-  let meta = await Promise.any([withDesc(ivP), withDesc(ytP)]).catch(() => null)
-  if (!meta) {
-    // neither served a description: merge whatever came back (date/views fallback)
-    const [iv, yt] = await Promise.all([ivP.catch(() => null), ytP.catch(() => null)])
-    meta = (iv ?? yt) ? { ...(iv ?? { description: "", date: "", views: "" }), ...Object.fromEntries(Object.entries(yt ?? {}).filter(([, v]) => v)) } as VideoMeta : { description: "", date: "", views: "" }
-  }
-  if (meta.description || meta.date || meta.views) metaCache.set(id, meta) // failed/empty fetches stay uncached (retryable)
-  return meta
-}
-
-async function invidiousMeta(id: string): Promise<VideoMeta | null> {
-  const urls = candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/videos/${id}`)
-  const j = await firstJson<any>(urls)
-  if (!j) return null
-  return { description: clean(String(j.description ?? j.descriptionHtml ?? "")), date: j.publishedText ?? "", views: String(j.viewCount ?? "") }
-}
-
 async function ytdlpMeta(id: string): Promise<VideoMeta> {
   try {
-    const proc = Bun.spawn(
-      ["yt-dlp", "--no-warnings", "--socket-timeout", "5", "--dump-json", `https://www.youtube.com/watch?v=${id}`],
-      { stdout: "pipe", stderr: "ignore" },
+    return await limit(() =>
+      (async () => {
+        const proc = Bun.spawn(
+          ["yt-dlp", "--no-warnings", "--socket-timeout", "5", "--dump-json", `https://www.youtube.com/watch?v=${id}`],
+          { stdout: "pipe", stderr: "ignore" },
+        )
+        const text = await new Response(proc.stdout).text()
+        const j = JSON.parse(text) as any
+        return {
+          description: clean(j.description ?? ""),
+          date: j.upload_date ? `${j.upload_date.slice(0, 4)}-${j.upload_date.slice(4, 6)}-${j.upload_date.slice(6, 8)}` : "",
+          views: String(j.view_count ?? ""),
+          duration: j.duration ? fmtDuration(j.duration) : "",
+        }
+      })(),
     )
-    const text = await new Response(proc.stdout).text()
-    const j = JSON.parse(text) as any
-    return {
-      description: clean(j.description ?? ""),
-      date: j.upload_date ? `${j.upload_date.slice(0, 4)}-${j.upload_date.slice(4, 6)}-${j.upload_date.slice(6, 8)}` : "",
-      views: String(j.view_count ?? ""),
-    }
   } catch {
-    return { description: "", date: "", views: "" }
+    return EMPTY_META
   }
 }
 

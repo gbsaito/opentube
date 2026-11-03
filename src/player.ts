@@ -1,5 +1,6 @@
 import type { Video, Settings } from "./config"
 import { settings } from "./config"
+import { limit } from "./spawn"
 import { createSignal } from "solid-js"
 
 const url = (v: Video) => `https://youtube.com/watch?v=${v.id}`
@@ -147,22 +148,24 @@ function ytdlFormat(mode: "video" | "audio"): string {
 
 function resolveUrls(id: string, mode: "video" | "audio"):
  Promise<MediaUrls> {
-  return (async () => {
-    try {
-      const fmt = ytdlFormat(mode)
-      const proc = Bun.spawn(["yt-dlp", "--no-warnings", "--socket-timeout", "5", "-f", fmt, "--print", "urls", `https://youtube.com/watch?v=${id}`], {
-        stdout: "pipe",
-        stderr: "ignore",
-      })
-      const text = await new Response(proc.stdout).text()
-      const urls = text.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("http"))
-      if (urls.length === 0) return {}
-      if (urls.length === 1) return { videoUrl: urls[0]!, audioUrl: mode === "audio" ? urls[0]! : undefined }
-      return { videoUrl: urls[0]!, audioUrl: urls[1]! } // bv*+ba: first = video, second = audio
-    } catch {
-      return {}
-    }
-  })()
+  return limit(() =>
+    (async () => {
+      try {
+        const fmt = ytdlFormat(mode)
+        const proc = Bun.spawn(["yt-dlp", "--no-warnings", "--socket-timeout", "5", "-f", fmt, "--print", "urls", `https://youtube.com/watch?v=${id}`], {
+          stdout: "pipe",
+          stderr: "ignore",
+        })
+        const text = await new Response(proc.stdout).text()
+        const urls = text.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("http"))
+        if (urls.length === 0) return {}
+        if (urls.length === 1) return { videoUrl: urls[0]!, audioUrl: mode === "audio" ? urls[0]! : undefined }
+        return { videoUrl: urls[0]!, audioUrl: urls[1]! } // bv*+ba: first = video, second = audio
+      } catch {
+        return {}
+      }
+    })(),
+  )
 }
 
 export function urlCacheClear() {
@@ -170,7 +173,8 @@ export function urlCacheClear() {
 }
 
 /** start resolving play URLs in the background (call on row selection/hover) */
-export function prewarm(v: Video | undefined, mode: "video" | "audio" = "video") {  const id = v?.id
+export function prewarm(v: Video | undefined, mode: "video" | "audio" = "video") {
+  const id = v?.id
   if (!id) return
   const key = `${settings().quality}:${mode}:${id}`
   if (!urlCache.has(key)) urlCache.set(key, resolveUrls(id, mode))
@@ -218,6 +222,7 @@ async function doPlay(v: Video, mode: "video" | "audio") {
     stderr: "ignore",
   })
   current.unref()
+  try { if (process.env.APP_DBG) appendFileSync("/tmp/opentube-keys.log", `${Date.now()} [doPlay] args=${JSON.stringify([...base, ...args, mediaUrl]).slice(0, 400)}\n`) } catch {}
   current.exited.then(() => {
     current = null
     try {
