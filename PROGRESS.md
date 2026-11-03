@@ -7,6 +7,7 @@
 
 
 ## status
+- YOUTUBE FEATURE AUDIT (user asked what features are missing): gap vs YouTube feature set — MISSING (no code path): comments, like/dislike, watch-later/saved, live streams, shorts, trending, channel pages, notifications, recommendations feed, playback queue, captions/subtitles. PARTIAL: subscriptions (local store + `s` add + visual-only screen). PLANNED: auth (phase 4). IMPLEMENTED: search/pagination/sort/play/audio/quality/fullscreen/progress/history/playlists/descs/prompt-history/mouse/zoom/settings.
 - AUDIO STILL ITALIAN (user: playing video now; mpv cmdline showed xtags=acont=dubbed-auto -> invidious audio picker took bitrate-first, never checked acont): CHANGE (8f999ea): invidious audio pick now prefers acont=original track, then language match, then best-by-lpref/bitrate.
 - AUDIO STILL ITALIAN (user): CHANGE (687f7eb follow-up): original-language audio match now compares primary language subtags (en-US vs en). Verify by playing.
 - AUDIO STILL ITALIAN (user: "q still italian"): CHANGE (687f7eb): invidious audio pick now prefers the video's original-language track (j.original_language/j.language match on language) after the language_preference sort; doPlay now drops stale session urlCache resolves per play (backend/pick fixes don't invalidate cache). Verify by playing.
