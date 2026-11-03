@@ -243,7 +243,8 @@ function moveSelection(delta: number) {
   const base = page() * pageSize()
   const nextLocal = (local + delta + list.length) % list.length
   ;(screen() === "results" ? setSel : setStoreIndex)(base + nextLocal)
-  const picked = list[nextLocal]!
+  const picked = list[nextLocal]
+  if (!picked) return // row vanished between the length check and here (e.g. results replaced mid-tick)
   listScrollRef?.scrollChildIntoView(`row-${picked.id}`, { align: "nearest" })
   refreshSidebar(picked)
 }

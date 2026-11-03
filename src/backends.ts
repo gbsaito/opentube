@@ -90,17 +90,20 @@ async function getJson<T>(url: string): Promise<T> {
   return (await res.json()) as T
 }
 
-/** try each candidate in order, first success wins */
+/** try each candidate IN PARALLEL, first success wins (sequential fallback took ~5s per dead instance) */
 async function getJsonAny<T>(urls: string[]): Promise<T> {
-  let last: unknown
-  for (const u of urls) {
-    try {
-      return await getJson<T>(u)
-    } catch (e) {
-      last = e
+  return new Promise<T>((resolve, reject) => {
+    let pending = urls.length
+    let last: unknown
+    for (const u of urls) {
+      getJson<T>(u)
+        .then(resolve)
+        .catch((e) => {
+          last = e
+          if (--pending === 0) reject(last)
+        })
     }
-  }
-  throw last
+  })
 }
 
 /** normalize user setting + pool fallbacks, deduped */
