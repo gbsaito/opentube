@@ -168,10 +168,12 @@ async function invidiousUrls(id: string, mode: "video" | "audio"): Promise<Media
     .filter((f) => String(f.type ?? "").startsWith("audio"))
     .sort((a, b) => Number(b.language_preference ?? -1) - Number(a.language_preference ?? -1) || (b.bitrate ?? 0) - (a.bitrate ?? 0))
   // invidious marks tracks in the URL xtags: acont=original vs acont=dubbed-auto; prefer the original
+  // (xtags value is percent-encoded: acont%3Ddubbed-auto%3Alang%3Duk — decode before parsing)
   const acont = (f: any): string => {
     const m = String(f.url ?? "").match(/xtags=([^&]*)/)
-    const kv = m?.[1]?.split(":").map((s) => s.split("=")) ?? []
-    const ac = kv.find(([k]) => k === "acont")
+    if (!m) return "unknown"
+    const raw = m[1]!.replace(/%3A/gi, ":").replace(/%3D/gi, "=")
+    const ac = raw.split(":").map((s) => s.split("=")).find((kv) => kv[0] === "acont")
     return ac ? String(ac[1] ?? "") : "unknown"
   }
   const p = (s: any) => String(s ?? "").toLowerCase().split(/[-_]/)[0]!
