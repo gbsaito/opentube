@@ -265,6 +265,7 @@ export interface VideoMeta {
   date: string
   views: string
   duration: string
+  creators?: string[] // watch-page only: collab videos list every featured channel (channel picker)
 }
 
 export const EMPTY_META: VideoMeta = { title: "", description: "", date: "", views: "", duration: "" }
@@ -290,6 +291,7 @@ function mergeMeta(iv: VideoMeta | null, yt: VideoMeta | null): VideoMeta {
     date: iv?.date || yt?.date || "",
     views: iv?.views || yt?.views || "",
     duration: iv?.duration || yt?.duration || "",
+    creators: yt?.creators, // watch-page only
   }
 }
 
@@ -372,6 +374,7 @@ async function ytdlpMeta(id: string, front = false): Promise<VideoMeta> {
       date: j.upload_date ? `${j.upload_date.slice(0, 4)}-${j.upload_date.slice(4, 6)}-${j.upload_date.slice(6, 8)}` : "",
       views: String(j.view_count ?? ""),
       duration: j.duration ? fmtDuration(j.duration) : "",
+      creators: j.creators ?? (typeof j.creator === "string" ? j.creator.split(",").map((s: string) => s.trim()).filter(Boolean) : []),
     }
   }
   // android first (~2s); if it ever gets bot-checked, fall through to the old mweb,tv combo

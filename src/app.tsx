@@ -238,18 +238,23 @@ async function updateThumb(v: Video | undefined) {
 const avatarCache = new Map<string, string>()
 
 /** yt avatar assets ship as square RGB jpegs and terminal image cells can't clip: ffmpeg cuts a
- *  circular RGBA png (transparent corners). No ffmpeg on the box -> the square avatar shows.
- *  ponytail: upgrade path = pure-TS png alpha mask if a box without ffmpeg ever shows square icons */
+ *  ROUNDED png — corners painted the exact terminal bg color (#18181b) instead of alpha: the
+ *  circle stays seamless over ANY protocol (sixel/blocks honor no alpha).
+ *  ponytail: bg-recolor couples the icon to theme.bg; upgrade to checking each protocol's alpha
+ *  support and falling back to this */
 async function roundAvatar(url: string): Promise<Uint8Array | null> {
   const hit = thumbCache.get(`avatar:${url}`)
   if (hit) return hit
   const jobId = crypto.randomUUID() as string
-  const inFile = `/tmp/opentube-av-${jobId}.jpg` // raw, reusable regardless this exact image's stream origin
+  const inFile = `/tmp/opentube-av-${jobId}.jpg`
   const outFile = `/tmp/opentube-av-${jobId}.png`
   try {
     const raw = await fetch(url).then((r) => r.arrayBuffer()) // Bun.write with a url string does NOT fetch
     await Bun.write(inFile, raw)
-    const proc = Bun.spawn(["ffmpeg", "-y", "-loglevel", "error", "-i", inFile, "-vf", "format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*lt((X-W/2)*(X-W/2)+(Y-H/2)*(Y-H/2)\\,W*W/4)'", outFile], {
+    const D = "(X-W/2)*(X-W/2)+(Y-H/2)*(Y-H/2)"
+    const INSIDE = `lt(${D}\\,W*W/4)`
+    const vf = `format=rgba,geq=r='if(${INSIDE}\\,r(X,Y)\\,24)':g='if(${INSIDE}\\,g(X,Y)\\,24)':b='if(${INSIDE}\\,b(X,Y)\\,27)':a=255`
+    const proc = Bun.spawn(["ffmpeg", "-y", "-loglevel", "error", "-i", inFile, "-vf", vf, outFile], {
       stdout: "ignore",
       stderr: "ignore",
     })
@@ -275,8 +280,8 @@ async function updateChannelAvatar(row: Video | undefined) {
     if (!url) {
       const j = await channelProfile(ucid)
       const t: any[] = j?.authorThumbnails ?? []
-      // smallest avatar >=48px keeps the download tiny; links may be instance-proxied
-      url = t.filter((x) => parseInt(String(x.width)) >= 48).sort((a, b) => parseInt(String(a.width)) - parseInt(String(b.width)))[0]?.url ?? ""
+      // LARGEST asset: the icon renders >200px in the sidebar — small sources upscale = blur
+      url = t.sort((a, b) => parseInt(String(b.width)) - parseInt(String(a.width)))[0]?.url ?? ""
       if (!url) return setThumb(null)
       if (url.startsWith("//")) url = `https:${url}`
       avatarCache.set(ucid, url)
@@ -544,12 +549,50 @@ onPlaybackEnd(() => {
   }
 })
 
+// channel picker modal: collab videos ("A and 2 more") carry every featured channel on the
+// watch page — s asks which one to subscribe instead of storing the display string
+const [subPick, setSubPick] = createSignal<string[] | null>(null)
+const [subPickIdx, setSubPickIdx] = createSignal(0)
+
+function parseCollabNames(channel: string): string[] | null {
+  const parts = channel.split(" and ").map((s) => s.trim())
+  if (parts.length < 2) return null
+  if (/more$/i.test(channel)) return null // "A and 2 more": ambiguous — needs the watch page
+  return parts
+}
+
 function subscribeCurrent() {
   const v = currentVideo()
   if (!v?.channel) return
-  // store the UCid when the row knows it and ONLY channel-level fields: copied video leftovers
-  // (duration/views/date) made subscription rows look like a subscribed video
-  subscriptions.add({ id: v.channelId || v.channel, title: v.channel, channel: v.channel, description: "", date: "", views: "", channelId: v.channelId })
+  const meta = sidebarMeta()
+  const names = meta?.creators?.length && meta.creators.length > 1 ? meta.creators : parseCollabNames(v.channel)
+  if (names && names.length > 1) {
+    setSubPick(names)
+    setSubPickIdx(0)
+    return
+  }
+  // ambiguous collab chip ("A and N more") and the watch-page meta hasn't landed yet: wait briefly, then pick
+  if (!names && /and \d+ more/i.test(v.channel)) {
+    const seq = v.id
+    void videoMetaFull(v.id, true).then((full) => {
+      const creators = (full.creators ?? []).filter(Boolean)
+      if (creators.length > 1 && subPick() === null && currentVideo()?.id === seq) {
+        setSubPick(creators)
+        setSubPickIdx(0)
+      }
+    })
+    return // not silently subscribing the display string — user presses s again if the meta never lands
+  }
+  void doSubscribe(v.channel)
+}
+
+async function doSubscribe(name: string) {
+  if (!name) return
+  let id = name
+  try {
+    id = await channelUcid(name) // exact channel name -> UCid; fall back to the name when offline
+  } catch {}
+  subscriptions.add({ id, title: name, channel: name, description: "", date: "", views: "", channelId: id })
 }
 // subscriptions drill-down: enter on a channel lists its latest uploads; esc returns to the channel list
 const [subChannel, setSubChannel] = createSignal<Video | null>(null)
@@ -639,6 +682,19 @@ export const App: Component = () => {
   useKeyboard((e) => {
     try { if (process.env.OTUI_DEBUG) appendFileSync("/tmp/opentube-keys.log", `${Date.now()} name=${e.name} seq=${JSON.stringify(e.sequence)} type=${e.eventType}\n`) } catch {}
     if (e.eventType === "release") return
+
+    // channel picker modal: up/down/jk pick, enter subscribe, esc cancel — blocks everything beneath
+    if (subPick()) {
+      const names = subPick()!
+      if (e.name === "escape") return setSubPick(null)
+      if (e.name === "up" || e.name === "k") return setSubPickIdx((i) => (i + names.length - 1) % names.length)
+      if (e.name === "down" || e.name === "j") return setSubPickIdx((i) => (i + 1) % names.length)
+      if (e.name === "return") {
+        setSubPick(null)
+        return void doSubscribe(names[subPickIdx()] ?? "")
+      }
+      return
+    }
 
     // instance/count editing swallows all keys first
     if (editing()) {
@@ -903,11 +959,13 @@ const NonHomeScreens: Component = () => (
       screen() === "nowplaying" ? `now playing › ${npVideo?.title ?? ""}` :
       screen() === "desc" ? `description › ${npVideo?.title?.slice(0, 40) ?? ""}` :
       screen() === "subscriptions" ? (subChannel() ? `subscriptions › ${subChannel()!.title}` : "subscriptions") :
+      subPick() ? "subscribe › pick a channel" :
       (screen() as string)
     } />
-    {screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" || screen() === "playlists" || screen() === "subscriptions" ? <StoreScreen /> : screen() === "nowplaying" ? <NowPlaying /> : screen() === "desc" ? <DescScreen /> : <box flexGrow={1} />}
+    {subPick() ? <SubPickBody /> : screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" || screen() === "playlists" || screen() === "subscriptions" ? <StoreScreen /> : screen() === "nowplaying" ? <NowPlaying /> : screen() === "desc" ? <DescScreen /> : <box flexGrow={1} />}
     <box height={1} paddingLeft={2} backgroundColor={theme.bg}>
       <text fg={theme.faint}>{
+        subPick() ? "↑↓/jk move · enter subscribe · esc cancel" :
         screen() === "desc" ? "esc back" :
         screen() === "nowplaying" ? `${HINTS} · r loop · m mute` :
         `${HINTS.replace(" · esc back", "")}${screen() === "history" ? " · x delete" : ""} · ${screen() === "subscriptions" && subChannel() ? `o sort ${subSort()}` : `d desc · o sort ${sortKey()} · O ${sortAsc() ? "asc" : "desc"}`}${screen() === "results" ? " · / edit query" : ""}${screen() === "subscriptions" && !subChannel() ? " · enter open channel" : ""} · esc back`
@@ -1175,6 +1233,27 @@ const ListHint: Component<{ text: string; color?: string }> = (props) => (
     <text fg={props.color ?? theme.faint}>{props.text}</text>
   </box>
 )
+
+// --- channel picker modal (collab subscribe) ----------------------------------------
+function SubPickBody() {
+  const names = subPick() ?? []
+  const sel = Math.min(subPickIdx(), names.length - 1)
+  return (
+    <box flexGrow={1} backgroundColor={theme.bg} justifyContent="center" alignItems="center">
+      <box width="56%" border={["top", "bottom", "left", "right"]} borderStyle="single" borderColor={settings().accent} backgroundColor={theme.inputBg} paddingTop={1}>
+        <text fg={theme.accent} selectable={false}>  subscribe › pick a channel</text>
+        <text fg={theme.faint} selectable={false}> </text>
+        <For each={names}>{(name, i) => (
+          <box paddingLeft={2} height={1} backgroundColor={i() === sel ? `#${settings().accent.slice(1)}4d` : undefined}>
+            <text selectable={false} fg={theme.fg}>{i() === sel ? " ▸ " : "   "}{name}</text>
+          </box>
+        )}</For>
+        <text fg={theme.faint} selectable={false}> </text>
+        <text fg={theme.faint} selectable={false}> ↑↓/jk move · enter subscribe · esc cancel</text>
+      </box>
+    </box>
+  )
+}
 
 // --- description modal (d) ----------------------------------------------------------
 const URL_SPLIT = /(https?:\/\/\S+)/g
