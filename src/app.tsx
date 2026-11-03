@@ -1384,15 +1384,15 @@ const ChannelInfo: Component<{ v: Video; info: any }> = (props) => {
   return (
     <>
       <text fg={theme.fg}>{info().author || props.v.title}</text>
+      <text>
+        <Span fg={theme.muted}>Subscribers: </Span>
+        <Span fg={theme.fg}>{fmtCount(info().subCount)}</Span>
+      </text>
       <Show when={info().description}>
         {() => (
           <text fg={theme.faint}>{String(info().description).split(/\r\n|\r|\n/).filter(Boolean).slice(0, 4).map((l) => l.slice(0, 110)).join("\n")}</text>
         )}
       </Show>
-      <text>
-        <Span fg={theme.muted}>Subscribers: </Span>
-        <Span fg={theme.fg}>{fmtCount(info().subCount)}</Span>
-      </text>
       <Show when={info().totalViews > 0}>
         {() => (
           <text>
