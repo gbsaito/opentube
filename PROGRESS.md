@@ -7,6 +7,7 @@
 
 
 ## status
+- THUMB RACE FIX (user: "thumbnail of last video is stuck at query -> appears when searching a new query; first result shows blank thumbnail at first"): submitQuery cleared setThumb(null)/thumbUrl=​​"​​ AFTER launching updateThumb — thumbUrl="" poisoned updateThumb's stale-guard so a non-cached thumb never landed (old image stuck), and a cache-hit sync paint was wiped by the trailing setThumb(null) (blank first row). Now cleared before the fetch starts.
 - DESC NAV (user: "full desc: make down/up arrows navigate like j/k and scroll"): CHANGE: desc modal now routes j/k/down/up to the scrollbox (scrollBy +-1), esc clears the ref and returns. Verify by reopening d on a long desc.
 - AUDIO DUB ROOT CAUSE + FIX (9a0e2a4): acont() compared against literal "dubbed-auto" but the captured xtags value was percent-encoded (acont%3Ddubbed-auto%3Alang%3Duk) — split never fired, dub-skip was ALWAYS true, pick fell through to aud[0] = highest bitrate = dub. acont() now decodes %3A/%3D before parsing; verified on Mewing dump: 60 audio tracks = 5 original + 55 dubbed-auto, pick = original.
 - AUDIO DUB FIX FINAL (user: still dubbed in opentube even after restart): CHANGE (189fd8e): invidious audio pick order = acont=original, then skip all acont=dubbed-auto tracks, then language match, then any.
