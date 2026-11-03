@@ -789,7 +789,7 @@ function Home() {
       {!suggestOpen() && (
         <>
           <box width="62%" maxWidth={72} alignSelf="center">
-            <text fg={theme.faint}>tab switch focus · ↑↓ move · enter open · type to search</text>
+            <text fg={theme.faint}>{`tab switch · ↑↓ move · enter open${settings().prompt_history ? " · / history" : ""}`}</text>
           </box>
           <box height={1} />
           <box width="62%" maxWidth={72} alignSelf="center">
