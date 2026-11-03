@@ -749,10 +749,6 @@ function Home() {
               <box
                 height={1}
                 backgroundColor={active() ? `#${settings().accent.slice(1)}4d` : undefined}
-                onMouseOver={() => {
-                  if (inputMode()) return // while typing, mouse hovering must not steal the menu
-                  setQuickIndex(i())
-                }}
                 onMouseDown={(e: any) => {
                   if (e.button !== 0) return
                   setQuickIndex(i())
