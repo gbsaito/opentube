@@ -24,7 +24,7 @@ import {
 } from "./config"
 import { searchVideos, searchVideosWithFallback, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
 import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear, stopPlayback, onPlaybackEnd, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
-import { settle } from "./spawn"
+import { settle, limit } from "./spawn"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
 const Span: Component<any> = (props) => <span {...props} />
@@ -137,12 +137,11 @@ async function updateMeta(v: Video | undefined) {
   }
   if (metaId === id) return // already filling/shown this row
   metaId = id
-  const full = v.description && v.date && v.views // row carries everything
   const show = (m: VideoMeta) => {
     if (metaId === id) setSidebarMeta(m) // ignore stale responses
     setOriginalTitle(id, m) // original-language title (search rows may be translated)
   }
-  if (full) return setSidebarMeta(null)
+  // no early skip when the row "looks complete": its stored description may be the translated one
   show(await videoMeta(id))
   show(await videoMetaFull(id))
 }
@@ -154,6 +153,28 @@ function setOriginalTitle(id: string, m: VideoMeta) {
   if (npVideo?.id === id && npVideo.title !== t) npVideo = { ...npVideo, title: t }
   if (screen() === "results") {
     setVideos((vs) => (vs.some((v) => v.id === id && v.title !== t) ? vs.map((v) => (v.id === id ? { ...v, title: t } : v)) : vs))
+  }
+}
+
+// background pass: original titles only exist on the per-video watch page (search rows ship translated
+// ones), so walk the results serially in the back — visible page first, the rest after
+let titleFillSeq = 0
+const originalTitleDone = new Set<string>()
+async function fillOriginalTitles(body: Video[], visibleIds: string[]) {
+  const seq = ++titleFillSeq
+  const vis = new Set(visibleIds)
+  const list = [...body.filter((v) => vis.has(v.id)), ...body.filter((v) => !vis.has(v.id))]
+  for (const v of list) {
+    if (seq !== titleFillSeq) return
+    if (originalTitleDone.has(v.id)) continue
+    try {
+      const m = await limit(() => videoMetaFull(v.id))
+      if (seq !== titleFillSeq) return
+      if (m.title) {
+        originalTitleDone.add(v.id)
+        setOriginalTitle(v.id, m)
+      }
+    } catch {}
   }
 }
 
@@ -325,6 +346,10 @@ async function doSearch(q: string) {
     searchCache.set(q, { at: Date.now(), rows })
     setVideos(await rows)
     void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
+    // background: replace translated search titles with original-language ones (visible page first)
+    const body = videos()
+    const size = pageSize()
+    void fillOriginalTitles(body, body.slice(page() * size, (page() + 1) * size).map((v) => v.id))
     void ensurePageLoaded() // background-prefetch the next window so paging at 50 results is instant
   } catch (e) {
     searchCache.delete(q) // don't replay a poisoned cached promise on the next enter
@@ -1129,7 +1154,7 @@ const Sidebar: Component = () => {
               <Show when={v()?.description || sidebarMeta()?.description}>
                 {() => {
                   // respect original line breaks / spaces: split on newlines, trim, per-line truncate
-                  const desc = (v()?.description || sidebarMeta()?.description || "")
+                  const desc = sidebarMeta()?.description || v()?.description || ""
                   const shown = desc
                     .split(/\r\n|\r|\n/)
                     .map((l) => l.trim())

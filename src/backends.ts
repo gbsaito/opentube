@@ -10,12 +10,13 @@ const INVIDIOUS = ["https://yt.chocolatemoo53.com", "https://inv.nadeko.net", "h
 // flat-playlist: fast rows (no per-video metadata crawl); missing date is filled
 // lazily by updateMeta on selection
 async function viaYtDlp(query: string, count?: number): Promise<Video[]> {
-  const proc = Bun.spawn(["yt-dlp", "--dump-json", "--flat-playlist", `ytsearch${count ?? settings().results_count}:${query}`], {
+  const n = count ?? settings().results_count
+  const proc = Bun.spawn(["yt-dlp", "--dump-json", "--flat-playlist", `ytsearch${n}:${query}`], {
     stdout: "pipe",
     stderr: "ignore",
   })
   const text = await new Response(proc.stdout).text()
-  return text
+  const rows = text
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as any)
@@ -26,7 +27,24 @@ async function viaYtDlp(query: string, count?: number): Promise<Video[]> {
       date: e.upload_date ? `${e.upload_date.slice(0, 4)}-${e.upload_date.slice(4, 6)}-${e.upload_date.slice(6, 8)}` : "",
       description: clean(e.description ?? ""),
       duration: e.duration ? fmtDuration(e.duration) : "",
+      views: "",
     }))
+  // yt-dlp's flat search hands back auto-translated titles for videos with translation support;
+  // invidious search serves the original ones — cross-fill title (+ views/date it has) by id
+  try {
+    const pages = Math.ceil(n / INVIDIOUS_API_PAGE)
+    const settled = await Promise.allSettled(
+      Array.from({ length: pages }, (_, k) => viaInvidious(query, 1 + k)),
+    )
+    const byId = new Map<string, Video>()
+    for (const r of settled) if (r.status === "fulfilled") for (const v of r.value) byId.set(v.id, v)
+    if (byId.size > 0)
+      return rows.map((v) => {
+        const iv = byId.get(v.id)
+        return iv ? { ...v, title: iv.title || v.title, views: v.views || iv.views, date: v.date || iv.date } : v
+      })
+  } catch {}
+  return rows
 }
 
 // --- invidious ---------------------------------------------------------------------
@@ -190,10 +208,11 @@ function putCache(id: string, m: VideoMeta) {
   if (m.description || m.date || m.views || m.duration) metaCache.set(id, m) // failed/empty fetches stay uncached (retryable)
 }
 
-/** merge both sources field-by-field: first non-empty wins (invidious preferred: usually fastest) */
+/** merge both sources field-by-field: first non-empty wins (invidious preferred: usually fastest);
+ *  title prefers yt-dlp — the watch page serves the untranslated title, the APIs hand back translated ones */
 function mergeMeta(iv: VideoMeta | null, yt: VideoMeta | null): VideoMeta {
   return {
-    title: iv?.title || yt?.title || "",
+    title: yt?.title || iv?.title || "",
     description: iv?.description || yt?.description || "",
     date: iv?.date || yt?.date || "",
     views: iv?.views || yt?.views || "",
