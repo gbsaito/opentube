@@ -15,6 +15,7 @@ export interface Video {
 }
 
 // --- settings (.conf) -------------------------------------------------------
+export type Quality = "auto" | "best" | "lowest" | "480p" | "720p" | "1080p" | "2160p" | "audio"
 export interface Settings {
   backend: "yt-dlp" | "invidious"
   results_count: number
@@ -25,7 +26,12 @@ export interface Settings {
   title_font: "tiny" | "block" | "shade" | "slick" | "huge" | "grid" | "pallet"
   accent: string
   mouse: boolean
+  fullscreen: boolean
+  quality: Quality
 }
+
+const QUALITIES: readonly Quality[] = ["auto", "best", "lowest", "480p", "720p", "1080p", "2160p", "audio"]
+export const QUALITY_ORDER = QUALITIES
 
 const DEFAULTS: Settings = {
   backend: "yt-dlp",
@@ -37,6 +43,8 @@ const DEFAULTS: Settings = {
   title_font: "block",
   accent: "#c084fc",
   mouse: true,
+  fullscreen: false,
+  quality: "auto",
 }
 
 const RENDERERS: readonly Settings["image_renderer"][] = ["auto", "icat", "sixel", "chafa"]
@@ -69,6 +77,8 @@ export function loadSettings() {
     const titleFont = FONTS.includes(conf["title_font"] as Settings["title_font"]) ? (conf["title_font"] as Settings["title_font"]) : DEFAULTS.title_font
     const accent = conf.accent && ACCENT_COLORS.includes(conf.accent) ? conf.accent : DEFAULTS.accent
     const mouse = conf["mouse"] !== undefined ? conf["mouse"] === "true" : DEFAULTS.mouse
+    const fullscreen = conf["fullscreen"] !== undefined ? conf["fullscreen"] === "true" : DEFAULTS.fullscreen
+    const quality = QUALITIES.includes(conf.quality as Quality) ? (conf.quality as Quality) : DEFAULTS.quality
     setSettings({
       ...DEFAULTS,
       backend,
@@ -80,6 +90,8 @@ export function loadSettings() {
       title_font: titleFont,
       accent,
       mouse,
+      fullscreen,
+      quality,
     } as Settings)
   } catch {
     // no conf yet -> defaults
@@ -102,6 +114,8 @@ export function saveConf() {
       `title_font = ${s.title_font}`,
       `accent = ${s.accent}`,
       `mouse = ${s.mouse}`,
+      `fullscreen = ${s.fullscreen}`,
+      `quality = ${s.quality}`,
     ].join("\n") + "\n",
   )
 }

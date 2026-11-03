@@ -1,4 +1,5 @@
-import type { Video } from "./config"
+import type { Video, Settings } from "./config"
+import { settings } from "./config"
 import { createSignal } from "solid-js"
 
 const url = (v: Video) => `https://youtube.com/watch?v=${v.id}`
@@ -129,10 +130,26 @@ async function poll() {
 type MediaUrls = { videoUrl?: string; audioUrl?: string }
 const urlCache = new Map<string, Promise<MediaUrls>>()
 
-function resolveUrls(id: string, mode: "video" | "audio"): Promise<MediaUrls> {
+/** map the settings `quality` value to a yt-dlp format selector */
+function ytdlFormat(mode: "video" | "audio"): string {
+  const q = settings().quality
+  if (mode === "audio") return "ba"
+  switch (q) {
+    case "lowest": return "wv*+wa/w"
+    case "480p": return "bv*[height<=480]+ba/b[height<=480]"
+    case "720p": return "bv*[height<=720]+ba/b[height<=720]"
+    case "1080p": return "bv*[height<=1080]+ba/b[height<=1080]"
+    case "2160p": return "bv*[height<=2160]+ba/b[height<=2160]"
+    // best/auto: highest quality muxed stream
+    default: return "bv*+ba/b"
+  }
+}
+
+function resolveUrls(id: string, mode: "video" | "audio"):
+ Promise<MediaUrls> {
   return (async () => {
     try {
-      const fmt = mode === "audio" ? "ba" : "bv*+ba/b"
+      const fmt = ytdlFormat(mode)
       const proc = Bun.spawn(["yt-dlp", "--no-warnings", "--socket-timeout", "5", "-f", fmt, "--print", "urls", `https://youtube.com/watch?v=${id}`], {
         stdout: "pipe",
         stderr: "ignore",
@@ -148,11 +165,14 @@ function resolveUrls(id: string, mode: "video" | "audio"): Promise<MediaUrls> {
   })()
 }
 
+export function urlCacheClear() {
+  urlCache.clear()
+}
+
 /** start resolving play URLs in the background (call on row selection/hover) */
-export function prewarm(v: Video | undefined, mode: "video" | "audio" = "video") {
-  const id = v?.id
+export function prewarm(v: Video | undefined, mode: "video" | "audio" = "video") {  const id = v?.id
   if (!id) return
-  const key = `${mode}:${id}`
+  const key = `${settings().quality}:${mode}:${id}`
   if (!urlCache.has(key)) urlCache.set(key, resolveUrls(id, mode))
   // ponytail: LRU-less cap; drop oldest when oversized
   if (urlCache.size > 24) {
@@ -167,7 +187,7 @@ export function play(v: Video, mode: "video" | "audio") {
 
 async function doPlay(v: Video, mode: "video" | "audio") {
   prewarm(v, mode)
-  const u = await urlCache.get(`${mode}:${v.id}`)
+  const u = await urlCache.get(`${settings().quality}:${mode}:${v.id}`)
   stopCurrent()
   paused = false
   setNpPaused(false)
@@ -176,6 +196,7 @@ async function doPlay(v: Video, mode: "video" | "audio") {
   resetProgress()
   socketPath = `/tmp/opentube-mpv-${Date.now()}.sock`
   const base = ["--no-terminal", `--input-ipc-server=${socketPath}`]
+  if (settings().fullscreen) base.push("--fullscreen")
   let mediaUrl: string | undefined
   const args: string[] = []
   if (mode === "audio") {
@@ -189,7 +210,7 @@ async function doPlay(v: Video, mode: "video" | "audio") {
     }
   }
   if (!mediaUrl) {
-    args.push("--ytdl-format=bestvideo+bestaudio/best", "--ytdl=yes")
+    args.push(`--ytdl-format=${ytdlFormat(mode)}`, "--ytdl=yes")
     mediaUrl = url(v)
   }
   current = Bun.spawn(["mpv", ...base, ...args, mediaUrl], {

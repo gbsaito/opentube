@@ -18,9 +18,10 @@ import {
   type Settings,
   TITLE_FONTS,
   ACCENT_COLORS,
+  QUALITY_ORDER,
 } from "./config"
 import { searchVideos, searchMoreVideos, videoMeta, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
-import { play, npTime, npDur, npLoop, npPaused, npMuted, stopPlayback, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
+import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear, stopPlayback, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
 const Span: Component<any> = (props) => <span {...props} />
@@ -46,7 +47,7 @@ const QUICK_LABEL: Record<string, string> = {
   settings: "Settings",
   quit: "Quit",
 }
-const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews", "title_font", "accent", "mouse"]
+const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews", "title_font", "accent", "mouse", "fullscreen", "quality"]
 const INVIDIOUS_INSTANCES: string[] = [
   "https://yt.chocolatemoo53.com",
   "https://inv.nadeko.net",
@@ -271,6 +272,8 @@ async function ensurePageLoaded() {
 
 function refreshSidebar(v: Video | undefined) {
   if (v) npVideo = v
+  // prefetch mpv play URLs on selection → play starts in ~1s when prewarmed
+  void prewarm(v)
   // results/history/playlists/subscriptions: thumb + meta fill for any list screen
   void Promise.all([updateThumb(v), updateMeta(v)])
 }
@@ -335,7 +338,6 @@ export const App: Component = () => {
   }
   useKeyboard((e) => {
     try { if (process.env.OTUI_DEBUG) appendFileSync("/tmp/opentube-keys.log", `${Date.now()} name=${e.name} seq=${JSON.stringify(e.sequence)} type=${e.eventType}\n`) } catch {}
-    if (process.env.APP_DBG) console.log("[app-keys]", e.name, screen(), editing()?.slice(0,0) ?? "")
     if (e.eventType === "release") return
 
     // instance/count editing swallows all keys first
@@ -379,8 +381,18 @@ export const App: Component = () => {
           const idx = INVIDIOUS_INSTANCES.indexOf(settings().invidious_instance)
           const next = idx < 0 ? (dir < 0 ? INVIDIOUS_INSTANCES.length - 1 : 0) : INVIDIOUS_INSTANCES[(idx + dir + INVIDIOUS_INSTANCES.length) % INVIDIOUS_INSTANCES.length]!
           setSettings({ ...settings(), invidious_instance: next } as any)
-        } else if (row === "previews" || row === "image_previews" || row === "mouse") {
+        } else if (row === "previews" || row === "image_previews" || row === "fullscreen") {
           setSettings({ ...settings(), [row]: !settings()[row] } as any)
+        } else if (row === "mouse") {
+          const on = !settings().mouse
+          setSettings({ ...settings(), mouse: on } as any)
+          try { renderer.useMouse = on } catch {} // live toggle; same knob as launch
+        } else if (row === "quality") {
+          const idx = QUALITY_ORDER.indexOf(s.quality)
+          const next = QUALITY_ORDER[(idx + dir + QUALITY_ORDER.length) % QUALITY_ORDER.length]!
+          setSettings({ ...settings(), quality: next } as any)
+          // invalidate prefetched URLs resolved under the old quality
+          urlCacheClear()
         } else if (row === "results_count") {
           setEditing("results_count")
           setEditBuf(String(settings().results_count))
@@ -546,6 +558,13 @@ function activateQuick(item: string | undefined) {
     setPage(0)
     setExhausted(false)
     return setScreen("playlists")
+  }
+  if (item === "subscriptions") {
+    setStore(subscriptions)
+    setStoreIndex(0)
+    setPage(0)
+    setExhausted(false)
+    return setScreen("subscriptions")
   }
   if (item === "history") {
     setStore(history)
