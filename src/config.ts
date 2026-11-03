@@ -11,6 +11,7 @@ export interface Video {
   description: string
   duration?: string
   views?: string
+  channelId?: string // yt channel id (UC…) when the backend row knows it — subscriptions key on this
   watchedAt?: number // history entries only
 }
 

@@ -22,7 +22,7 @@ import {
   ACCENT_COLORS,
   QUALITY_ORDER,
 } from "./config"
-import { searchVideos, searchVideosWithFallback, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, EMPTY_META, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
+import { searchVideos, searchVideosWithFallback, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, EMPTY_META, ERR_MSG, channelVideos, type BackendKey, type VideoMeta } from "./backends"
 import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear, stopPlayback, onPlaybackEnd, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
 import { settle } from "./spawn"
 
@@ -48,7 +48,7 @@ const QUICK_ICON: Record<string, string> = {
 const QUICK_LABEL: Record<string, string> = {
   history: "History",
   playlists: "Playlists (WIP)",
-  subscriptions: "Subscriptions (WIP)",
+  subscriptions: "Subscriptions",
   settings: "Settings",
   quit: "Quit",
 }
@@ -249,6 +249,9 @@ function dateVal(v: Video): number {
   return (parseInt(m[1]!, 10) || 0) * mult[m[2]!]! * 1000
 }
 function currentList(): Video[] {
+  // subscriptions drill-down: an open channel lists ITS uploads in the channel sort order —
+  // the title/views/date list sorting must not twist it
+  if (screen() === "subscriptions" && subChannel()) return subVideos()
   const base = screen() === "results" ? videos() : store()?.items ?? []
   const key = { title: (v: Video) => v.title.toLowerCase(), views: (v: Video) => viewVal(v.views), date: dateVal }[sortKey()]
   const dir = sortAsc() ? 1 : -1
@@ -296,7 +299,7 @@ function rowMouseDown(local: number, v: Video) {
   if (lastClick.id === v.id && now - lastClick.at < 400) {
     lastClick = { id: "", at: 0 }
     hoverSelect(local, v)
-    return playCurrent("video") // double click interacts
+    return activateCurrent("video") // double click interacts
   }
   lastClick = { id: v.id, at: now }
   hoverSelect(local, v)
@@ -478,7 +481,50 @@ onPlaybackEnd(() => {
 function subscribeCurrent() {
   const v = currentVideo()
   if (!v?.channel) return
-  subscriptions.add({ ...withMeta(v), id: v.channel, title: v.channel, description: "" })
+  // store the UCid when the row knows it — subscriptions open as a channel video listing
+  subscriptions.add({ ...withMeta(v), id: v.channelId || v.channel, title: v.channel, description: "" })
+}
+// subscriptions drill-down: enter on a channel lists its latest uploads; esc returns to the channel list
+const [subChannel, setSubChannel] = createSignal<Video | null>(null)
+const [subVideos, setSubVideos] = createSignal<Video[]>([])
+const [subLoading, setSubLoading] = createSignal(false)
+const [subSort, setSubSort] = createSignal<"newest" | "oldest" | "views">("newest")
+function activateCurrent(mode: "video" | "audio") {
+  if (screen() === "subscriptions" && !subChannel()) return void openSubChannel()
+  return playCurrent(mode)
+}
+async function openSubChannel() {
+  const ch = currentVideo()
+  if (!ch) return
+  setSubChannel(ch)
+  setSubVideos([])
+  setPage(0)
+  setStoreIndex(0)
+  setSubLoading(true)
+  try {
+    setSubVideos(await channelVideos(ch, subSort()))
+  } catch (e) {
+    setSubChannel(null)
+    setError(ERR_MSG(e))
+  } finally {
+    setSubLoading(false)
+  }
+}
+/** refetch the open channel's listing after o cycles the sort (newest -> oldest -> most views) */
+async function refetchSubChannel() {
+  const ch = subChannel()
+  if (!ch) return
+  setSubVideos([])
+  setPage(0)
+  setStoreIndex(0)
+  setSubLoading(true)
+  try {
+    setSubVideos(await channelVideos(ch, subSort()))
+  } catch {
+    setSubVideos([])
+  } finally {
+    setSubLoading(false)
+  }
 }
 /** fill missing fields (date/description/views) from already-fetched session cache, so history rows render instantly */
 function withMeta(v: Video): Video {
@@ -671,11 +717,22 @@ export const App: Component = () => {
     // results / history / playlists / subscriptions
     switch (e.name) {
       case "escape":
+        if (screen() === "subscriptions" && subChannel()) {
+          setSubChannel(null)
+          setSubVideos([])
+          setStoreIndex(Math.min(storeIndex(), Math.max(0, subscriptions.items.length - 1)))
+          return
+        }
         setScreen("home")
         setInputMode(false) // esc focuses the quick access menu; / returns focus to the searchbox
         return
       case "o":
       case "O": {
+        // channel view has its own sort categories: o cycles newest -> oldest -> most views
+        if (screen() === "subscriptions" && subChannel()) {
+          setSubSort((s) => (s === "newest" ? "oldest" : s === "oldest" ? "views" : "newest"))
+          return void refetchSubChannel()
+        }
         if (e.shift || e.name === "O") setSortAsc((a) => !a)
         else setSortKey((k) => (k === "title" ? "views" : k === "views" ? "date" : "title"))
         setStoreIndex(0)
@@ -703,12 +760,13 @@ export const App: Component = () => {
       case "right":
         return void goPage(1)
       case "return":
+        if (screen() === "subscriptions" && !subChannel()) return void openSubChannel()
         return playCurrent("video")
       case "p":
         // kitty reports shifted letters as lowercase name + shift flag, so shift+P == "p"+shift
-        return playCurrent(e.shift ? "audio" : "video")
+        return activateCurrent(e.shift ? "audio" : "video")
       case "P":
-        return playCurrent("audio")
+        return activateCurrent("audio")
       case "s":
         return subscribeCurrent()
       case "x":
@@ -777,14 +835,15 @@ const NonHomeScreens: Component = () => (
       screen() === "results" ? `search › ${query()}` :
       screen() === "nowplaying" ? `now playing › ${npVideo?.title ?? ""}` :
       screen() === "desc" ? `description › ${npVideo?.title?.slice(0, 40) ?? ""}` :
+      screen() === "subscriptions" ? (subChannel() ? `subscriptions › ${subChannel()!.title}` : "subscriptions") :
       (screen() as string)
     } />
-    {screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" || screen() === "playlists" ? <StoreScreen /> : screen() === "nowplaying" ? <NowPlaying /> : screen() === "desc" ? <DescScreen /> : <box flexGrow={1} />}
+    {screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" || screen() === "playlists" || screen() === "subscriptions" ? <StoreScreen /> : screen() === "nowplaying" ? <NowPlaying /> : screen() === "desc" ? <DescScreen /> : <box flexGrow={1} />}
     <box height={1} paddingLeft={2} backgroundColor={theme.bg}>
       <text fg={theme.faint}>{
         screen() === "desc" ? "esc back" :
         screen() === "nowplaying" ? `${HINTS} · r loop · m mute` :
-        `${HINTS.replace(" · esc back", "")}${screen() === "history" ? " · x delete" : ""} · d desc · o sort ${sortKey()} · O ${sortAsc() ? "asc" : "desc"}${screen() === "results" ? " · / edit query" : ""} · esc back`
+        `${HINTS.replace(" · esc back", "")}${screen() === "history" ? " · x delete" : ""} · ${screen() === "subscriptions" && subChannel() ? `o sort ${subSort()}` : `d desc · o sort ${sortKey()} · O ${sortAsc() ? "asc" : "desc"}`}${screen() === "results" ? " · / edit query" : ""}${screen() === "subscriptions" && !subChannel() ? " · enter open channel" : ""} · esc back`
       }</text>
     </box>
   </box>
@@ -842,6 +901,8 @@ function activateQuick(item: string | undefined) {
     setStoreIndex(0)
     setPage(0)
     setExhausted(false)
+    setSubChannel(null)
+    setSubVideos([])
     return setScreen("subscriptions")
   }
   if (item === "history") {
@@ -1024,11 +1085,12 @@ function Results() {
 }
 
 function StoreScreen() {
-  const items = () => store()?.items ?? []
+  // subscriptions drill-down: an open channel shows ITS uploads (currentList already branches)
+  const items = () => currentList()
   return (
     <box flexGrow={1} flexDirection="row">
       <scrollbox ref={(el: any) => (listScrollRef = el)} scrollY flexGrow={1} scrollbarOptions={{ visible: false }} border={["right"]} borderStyle="single" borderColor={theme.surfaceBorder}>
-        <Show when={items().length === 0}>{() => <ListHint text="nothing here yet" />}
+        <Show when={items().length === 0}>{() => <ListHint text={screen() === "subscriptions" && subChannel() ? (subLoading() ? `loading channel videos via ${settings().backend}…` : "no uploads") : "nothing here yet"} />}
         </Show>
         <For each={visibleList()}>{(v, i) => <ListRow v={v} selected={i() === localFocus()} local={i()} />}</For>
       </scrollbox>

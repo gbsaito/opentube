@@ -24,6 +24,7 @@ async function viaYtDlp(query: string, count?: number): Promise<Video[]> {
       id: e.id,
       title: e.title,
       channel: e.channel ?? e.uploader ?? "",
+      channelId: e.channel_id ?? "",
       date: e.upload_date ? `${e.upload_date.slice(0, 4)}-${e.upload_date.slice(4, 6)}-${e.upload_date.slice(6, 8)}` : "",
       description: clean(e.description ?? ""),
       duration: e.duration ? fmtDuration(e.duration) : "",
@@ -55,6 +56,7 @@ async function viaInvidious(query: string, apiPage = 1): Promise<Video[]> {
     id: v.videoId,
     title: v.title,
     channel: v.author ?? "",
+    channelId: v.authorId ?? "",
     date: v.publishedText ?? "",
     description: clean(v.description),
     duration: v.lengthSeconds > 0 ? fmtDuration(v.lengthSeconds) : "",
@@ -184,6 +186,64 @@ export async function searchVideosWithFallback(query: string): Promise<Video[]> 
     const other: BackendKey = settings().backend === "invidious" ? "yt-dlp" : "invidious"
     void e // first failure noted; the fallback's own error (if any) is what the user sees
     return await BACKENDS[other](query)
+  }
+}
+
+// --- channels (subscriptions) -----------------------------------------------------
+// subscription rows carry the UCid in `id` (new rows). Legacy rows (id = the channel name,
+// from before channel listings existed) resolve their UCid once per session.
+const ucidCache = new Map<string, string>()
+function resolveUcid(name: string): Promise<string> {
+  const hit = ucidCache.get(name)
+  if (hit) return Promise.resolve(hit)
+  return getJsonAny<any[]>(candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/search?type=channel&q=${encodeURIComponent(name)}`)).then((c) => {
+    const ucid = c?.find?.((x: any) => x.authorId)?.authorId ?? ""
+    if (!ucid) throw new Error(`channel not found: ${name}`)
+    ucidCache.set(name, ucid)
+    return ucid
+  })
+}
+
+/** one flat YouTube row -> Video (yt-dlp flat entries + invidious channel listings share these fields) */
+function flatRow(e: any): Video {
+  return {
+    id: e.videoId ?? e.id,
+    title: e.title,
+    channel: e.author ?? e.channel ?? "",
+    channelId: e.authorId ?? e.channel_id ?? "",
+    date: e.publishedText ?? (e.upload_date ? `${e.upload_date.slice(0, 4)}-${e.upload_date.slice(4, 6)}-${e.upload_date.slice(6, 8)}` : ""),
+    description: "",
+    duration: e.duration ? fmtDuration(e.duration) : e.lengthSeconds > 0 ? fmtDuration(e.lengthSeconds) : "",
+    views: String(e.viewCount ?? ""),
+  }
+}
+
+type ChannelSort = "newest" | "oldest" | "views"
+/** views/oldest for the yt-dlp fallback path are client-side sorts over the newest-first listing */
+function bySort(rows: Video[], sort: ChannelSort): Video[] {
+  if (sort === "views") return rows.sort((a, b) => (parseInt(b.views ?? "", 10) || 0) - (parseInt(a.views ?? "", 10) || 0))
+  if (sort === "oldest") return rows.reverse()
+  return rows
+}
+
+/** uploads of a subscribed channel in the chosen order: invidious API (sort_by), yt-dlp flat page as fallback */
+export async function channelVideos(sub: Video, sort: ChannelSort = "newest"): Promise<Video[]> {
+  const ucid = /^UC[\w-]{22}$/.test(sub.id) ? sub.id : await resolveUcid(sub.title || sub.id)
+  try {
+    const ivSort = sort === "views" ? "popular" : sort
+    const j = await getJsonAny<any>(candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/channels/${ucid}/videos?sort_by=${ivSort}`))
+    const rows = ((Array.isArray(j) ? j : j?.videos) ?? []).filter((v: any) => v.videoId).map(flatRow)
+    if (rows.length > 0) return rows
+    throw new Error("no uploads")
+  } catch {
+    const proc = Bun.spawn(["yt-dlp", "--no-warnings", "--dump-json", "--flat-playlist", "--playlist-end", "50", `https://www.youtube.com/channel/${ucid}/videos`], {
+      stdout: "pipe",
+      stderr: "ignore",
+    })
+    const text = await new Response(proc.stdout).text()
+    const rows = text.split("\n").filter(Boolean).map((line) => flatRow(JSON.parse(line)))
+    if (rows.length === 0) throw new Error("no uploads")
+    return bySort(rows, sort)
   }
 }
 
