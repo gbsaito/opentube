@@ -193,7 +193,7 @@ export async function searchVideosWithFallback(query: string): Promise<Video[]> 
 // subscription rows carry the UCid in `id` (new rows). Legacy rows (id = the channel name,
 // from before channel listings existed) resolve their UCid once per session.
 const ucidCache = new Map<string, string>()
-function resolveUcid(name: string): Promise<string> {
+export function channelUcid(name: string): Promise<string> {
   const hit = ucidCache.get(name)
   if (hit) return Promise.resolve(hit)
   return getJsonAny<any[]>(candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/search?type=channel&q=${encodeURIComponent(name)}`)).then((c) => {
@@ -202,6 +202,17 @@ function resolveUcid(name: string): Promise<string> {
     ucidCache.set(name, ucid)
     return ucid
   })
+}
+
+/** channel profile (avatar banner date …); raced over instances, session-cached */
+const chanCache = new Map<string, Promise<any>>()
+export function channelProfile(ucid: string): Promise<any> {
+  const hit = chanCache.get(ucid)
+  if (hit) return hit
+  const j = getJsonAny(candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/channels/${ucid}`))
+  chanCache.set(ucid, j)
+  j.catch(() => chanCache.delete(ucid)) // poison-guard: a failed profile is re-fetchable
+  return j
 }
 
 /** one flat YouTube row -> Video (yt-dlp flat entries + invidious channel listings share these fields) */
@@ -228,7 +239,7 @@ function bySort(rows: Video[], sort: ChannelSort): Video[] {
 
 /** uploads of a subscribed channel in the chosen order: invidious API (sort_by), yt-dlp flat page as fallback */
 export async function channelVideos(sub: Video, sort: ChannelSort = "newest"): Promise<Video[]> {
-  const ucid = /^UC[\w-]{22}$/.test(sub.id) ? sub.id : await resolveUcid(sub.title || sub.id)
+  const ucid = /^UC[\w-]{22}$/.test(sub.id) ? sub.id : await channelUcid(sub.title || sub.id)
   try {
     const ivSort = sort === "views" ? "popular" : sort
     const j = await getJsonAny<any>(candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/channels/${ucid}/videos?sort_by=${ivSort}`))

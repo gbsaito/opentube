@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/solid */
 import { createSignal, createMemo, For, Show, type Component } from "solid-js"
 import { useKeyboard, useRenderer, render } from "@opentui/solid"
-import { appendFileSync } from "fs"
+import { appendFileSync, unlinkSync } from "fs"
 import { format } from "util"
 import type { CliRenderer } from "@opentui/core"
 import { theme } from "./theme"
@@ -22,7 +22,7 @@ import {
   ACCENT_COLORS,
   QUALITY_ORDER,
 } from "./config"
-import { searchVideos, searchVideosWithFallback, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, EMPTY_META, ERR_MSG, channelVideos, type BackendKey, type VideoMeta } from "./backends"
+import { searchVideos, searchVideosWithFallback, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, EMPTY_META, ERR_MSG, channelVideos, channelUcid, channelProfile, type BackendKey, type VideoMeta } from "./backends"
 import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear, stopPlayback, onPlaybackEnd, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
 import { settle } from "./spawn"
 
@@ -207,7 +207,7 @@ async function loadDesc(id: string) {
   }
 }
 
-// sidebar thumbnail
+// sidebar thumbnail (videos) / avatar (channel rows)
 const [thumb, setThumb] = createSignal<Uint8Array | null>(null)
 let thumbUrl = ""
 const thumbCache = new Map<string, Uint8Array>()
@@ -217,8 +217,7 @@ function thumbUrlOf(v: Video | undefined): string {
   return v ? `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg` : ""
 }
 
-async function updateThumb(v: Video | undefined) {
-  const url = thumbUrlOf(v)
+async function updateThumbUrl(url: string) {
   thumbUrl = url
   if (!url) return setThumb(null)
   const hit = thumbCache.get(url)
@@ -229,6 +228,72 @@ async function updateThumb(v: Video | undefined) {
     if (thumbUrl === url) setThumb(bytes) // ignore stale responses
   } catch {
     if (thumbUrl === url) setThumb(null)
+  }
+}
+
+async function updateThumb(v: Video | undefined) {
+  return updateThumbUrl(thumbUrlOf(v))
+}
+
+const avatarCache = new Map<string, string>()
+
+/** yt avatar assets ship as square RGB jpegs and terminal image cells can't clip: ffmpeg cuts a
+ *  circular RGBA png (transparent corners). No ffmpeg on the box -> the square avatar shows.
+ *  ponytail: upgrade path = pure-TS png alpha mask if a box without ffmpeg ever shows square icons */
+async function roundAvatar(url: string): Promise<Uint8Array | null> {
+  const hit = thumbCache.get(`avatar:${url}`)
+  if (hit) return hit
+  const jobId = crypto.randomUUID() as string
+  const inFile = `/tmp/opentube-av-${jobId}.jpg` // raw, reusable regardless this exact image's stream origin
+  const outFile = `/tmp/opentube-av-${jobId}.png`
+  try {
+    const raw = await fetch(url).then((r) => r.arrayBuffer()) // Bun.write with a url string does NOT fetch
+    await Bun.write(inFile, raw)
+    const proc = Bun.spawn(["ffmpeg", "-y", "-loglevel", "error", "-i", inFile, "-vf", "format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*lt((X-W/2)*(X-W/2)+(Y-H/2)*(Y-H/2)\\,W*W/4)'", outFile], {
+      stdout: "ignore",
+      stderr: "ignore",
+    })
+    await proc.exited
+    if (!(await Bun.file(outFile).exists())) return null
+    const bytes = new Uint8Array(await Bun.file(outFile).arrayBuffer())
+    thumbCache.set(`avatar:${url}`, bytes)
+    return bytes
+  } catch {
+    return null
+  } finally {
+    try { unlinkSync(inFile) } catch {}
+    try { unlinkSync(outFile) } catch {}
+  }
+}
+
+/** subscription CHANNEL rows have no video thumbnail: show the channel's circular avatar */
+async function updateChannelAvatar(row: Video | undefined) {
+  if (!row) return setThumb(null)
+  try {
+    const ucid = /^UC[\w-]{22}$/.test(row.id) ? row.id : await channelUcid(row.title || row.id)
+    let url = avatarCache.get(ucid)
+    if (!url) {
+      const j = await channelProfile(ucid)
+      const t: any[] = j?.authorThumbnails ?? []
+      // smallest avatar >=48px keeps the download tiny; links may be instance-proxied
+      url = t.filter((x) => parseInt(String(x.width)) >= 48).sort((a, b) => parseInt(String(a.width)) - parseInt(String(b.width)))[0]?.url ?? ""
+      if (!url) return setThumb(null)
+      if (url.startsWith("//")) url = `https:${url}`
+      avatarCache.set(ucid, url)
+    }
+    const key = `avatar:${url}`
+    thumbUrl = key
+    const plain = thumbCache.get(url)
+    if (plain) return setThumb(plain) // square bytes fetched before roundAvatar died: better than blank
+    const round = await roundAvatar(url)
+    if (round && thumbUrl === key) return setThumb(round)
+    if (!round) {
+      const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer())
+      thumbCache.set(url, bytes)
+      if (thumbUrl === key) setThumb(bytes)
+    }
+  } catch {
+    setThumb(null)
   }
 }
 
@@ -451,7 +516,8 @@ function refreshSidebar(v: Video | undefined) {
     void updateMeta(row)
   })
   // thumbnails are a ~50ms CDN fetch: straight away, not debounced
-  void updateThumb(row)
+  if (screen() === "subscriptions" && !subChannel()) void updateChannelAvatar(row) // channel rows: circular avatar
+  else void updateThumb(row)
 }
 let sidebarRow: string | undefined
 const sidebarDeferrer = settle(350, (fn: () => void) => fn())
@@ -481,8 +547,9 @@ onPlaybackEnd(() => {
 function subscribeCurrent() {
   const v = currentVideo()
   if (!v?.channel) return
-  // store the UCid when the row knows it — subscriptions open as a channel video listing
-  subscriptions.add({ ...withMeta(v), id: v.channelId || v.channel, title: v.channel, description: "" })
+  // store the UCid when the row knows it and ONLY channel-level fields: copied video leftovers
+  // (duration/views/date) made subscription rows look like a subscribed video
+  subscriptions.add({ id: v.channelId || v.channel, title: v.channel, channel: v.channel, description: "", date: "", views: "", channelId: v.channelId })
 }
 // subscriptions drill-down: enter on a channel lists its latest uploads; esc returns to the channel list
 const [subChannel, setSubChannel] = createSignal<Video | null>(null)
@@ -903,7 +970,9 @@ function activateQuick(item: string | undefined) {
     setExhausted(false)
     setSubChannel(null)
     setSubVideos([])
-    return setScreen("subscriptions")
+    setScreen("subscriptions")
+    refreshSidebar(currentVideo()) // first row paints instantly (avatar for channel rows)
+    return
   }
   if (item === "history") {
     setStore(history)
