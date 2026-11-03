@@ -167,7 +167,10 @@ async function invidiousUrls(id: string, mode: "video" | "audio"): Promise<Media
   const aud = af
     .filter((f) => String(f.type ?? "").startsWith("audio"))
     .sort((a, b) => Number(b.language_preference ?? -1) - Number(a.language_preference ?? -1) || (b.bitrate ?? 0) - (a.bitrate ?? 0))
-  if (mode === "audio") return aud[0] ? { audioUrl: aud[0].url, videoUrl: undefined } : {}
+  // prefer the video's original-language audio track when the instance ships one (dub vs original split)
+  const orig = String(j.original_language ?? j.language ?? "").trim().toLowerCase()
+  const audio = orig ? aud.find((f) => String(f.language ?? "").toLowerCase() === orig) ?? aud[0] : aud[0]
+  if (mode === "audio") return audio ? { audioUrl: audio.url, videoUrl: undefined } : {}
   let vid = af.filter((f) => String(f.type ?? "").startsWith("video"))
   if (vid.length === 0) return {}
   if (settings().quality === "lowest") {
@@ -180,7 +183,7 @@ async function invidiousUrls(id: string, mode: "video" | "audio"): Promise<Media
       vid = capped.length > 0 ? capped : [vid[vid.length - 1]!] // fall back to the smallest stream
     }
   }
-  return { videoUrl: vid[0].url, audioUrl: aud[0]?.url }
+  return { videoUrl: vid[0].url, audioUrl: audio?.url }
 }
 
 /** slow fallback: full yt-dlp format-selector resolve */
@@ -238,6 +241,11 @@ async function doPlay(v: Video, mode: "video" | "audio", bypass = false) {
   // carries the best audio URL) instead of a second ~7s yt-dlp resolve
   const q = settings().quality
   // bypass: skip resolution entirely, let mpv/ytdl resolve the watch page itself (stale-URL retry)
+  // fresh-resolve every play: backend/pick fixes don't invalidate the session urlCache (stale dubbed URL)
+  if (!bypass) {
+    urlCache.delete(`${q}:video:${v.id}`)
+    urlCache.delete(`${q}:audio:${v.id}`)
+  }
   let u = bypass ? undefined : (prewarm(v), await urlCache.get(`${q}:video:${v.id}`))
   if (!bypass && seq !== playSeq) return // a newer play/selection superseded this one
   if (!bypass && mode === "audio" && !u?.audioUrl) {
