@@ -1109,9 +1109,10 @@ const DescLine: Component<{ pieces: Array<{ t: string; url?: string }> }> = (pro
 function DescScreen() {
   const lines = () => {
     const acc: Array<Array<{ t: string; url?: string }>> = []
-    // line breaks kept; blank lines deleted (>1 blank between paragraphs -> single)
-    const parts = descText().split(/\r\n|\r|\n/).map((s) => s.trim()).filter((s) => s.length > 0)
-    for (const l of parts) acc.push(descPieces(l, 92))
+    for (const l of descText().split(/\r\n|\r|\n/).map((s) => s.trim())) {
+      if (l === "") acc.push([{ t: "" }])
+      else acc.push(descPieces(l, 92))
+    }
     return acc
   }
   return (
@@ -1177,11 +1178,14 @@ const Sidebar: Component = () => {
               </text>
               <Show when={sidebarMeta()?.description}>
                 {() => {
-                  // full metadata only; line breaks kept; extra blank lines deleted (>1 blank between
-                  // paragraphs -> single break), max one blank space
                   const desc = sidebarMeta()?.description || ""
-                  const parts = desc.split(/\r\n|\r|\n/).map((l) => l.trim()).filter((l) => l.length > 0)
-                  const shown = parts.map((l) => l.slice(0, 68)).join("\n")
+                  const shown = desc
+                    .split(/\r\n|\r|\n/)
+                    .map((l) => l.trim())
+                    .filter((l) => l.length > 0)
+                    .slice(0, 6)
+                    .map((l) => l.slice(0, 110))
+                    .join("\n")
                   return <text fg={theme.faint}>{shown}</text>
                 }}
               </Show>
