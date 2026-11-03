@@ -7,6 +7,7 @@
 
 
 ## status
+- AUDIO DUB FIX FINAL (user: still dubbed in opentube even after restart): CHANGE (189fd8e): invidious audio pick order = acont=original, then skip all acont=dubbed-auto tracks, then language match, then any.
 - YOUTUBE FEATURE AUDIT (user asked what features are missing): gap vs YouTube feature set — MISSING (no code path): comments, like/dislike, watch-later/saved, live streams, shorts, trending, channel pages, notifications, recommendations feed, playback queue, captions/subtitles. PARTIAL: subscriptions (local store + `s` add + visual-only screen). PLANNED: auth (phase 4). IMPLEMENTED: search/pagination/sort/play/audio/quality/fullscreen/progress/history/playlists/descs/prompt-history/mouse/zoom/settings.
 - AUDIO STILL ITALIAN (user: playing video now; mpv cmdline showed xtags=acont=dubbed-auto -> invidious audio picker took bitrate-first, never checked acont): CHANGE (8f999ea): invidious audio pick now prefers acont=original track, then language match, then best-by-lpref/bitrate.
 - AUDIO STILL ITALIAN (user): CHANGE (687f7eb follow-up): original-language audio match now compares primary language subtags (en-US vs en). Verify by playing.
