@@ -231,19 +231,20 @@ export function play(v: Video, mode: "video" | "audio") {
 }
 
 let playSeq = 0 // guards against interleaved doPlay awaits: only the newest call may spawn
-async function doPlay(v: Video, mode: "video" | "audio") {
+async function doPlay(v: Video, mode: "video" | "audio", bypass = false) {
   const seq = ++playSeq
   // audio reuses the video prewarm's resolved pair (video prewarm on selection already
   // carries the best audio URL) instead of a second ~7s yt-dlp resolve
   const q = settings().quality
-  prewarm(v)
-  let u = await urlCache.get(`${q}:video:${v.id}`)
-  if (seq !== playSeq) return // a newer play/selection superseded this one
-  if (mode === "audio" && !u?.audioUrl) {
+  // bypass: skip resolution entirely, let mpv/ytdl resolve the watch page itself (stale-URL retry)
+  let u = bypass ? undefined : (prewarm(v), await urlCache.get(`${q}:video:${v.id}`))
+  if (!bypass && seq !== playSeq) return // a newer play/selection superseded this one
+  if (!bypass && mode === "audio" && !u?.audioUrl) {
     prewarm(v, "audio")
     u = await urlCache.get(`${q}:audio:${v.id}`)
     if (seq !== playSeq) return
   }
+  const spawnedWithDirect = !!(bypass ? undefined : u?.audioUrl ?? u?.videoUrl)
   stopCurrent()
   paused = false
   setNpPaused(false)
@@ -284,6 +285,15 @@ async function doPlay(v: Video, mode: "video" | "audio") {
     conn = null
     if (poller) clearInterval(poller)
     poller = null
+    // mpv died without ever playing (expired/403'd resolved direct URL): retry ONCE via
+    // mpv's own yt-dlp path (watch URL + client-probing shim) before giving up to the UI
+    const neverPlayed = npTime() <= 0 && npDur() <= 0 && Date.now() - firstPlayAt < 10000
+    if (spawnedWithDirect && !bypass && neverPlayed) {
+      urlCache.delete(`${q}:video:${v.id}`)
+      urlCache.delete(`${q}:audio:${v.id}`) // poisoned resolve, don't hand it out again
+      void doPlay(v, mode, true)
+      return
+    }
     playbackEndCb?.() // UI returns from now-playing when playback really ends
   })
   firstPlayAt = Date.now()
