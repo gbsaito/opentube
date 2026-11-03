@@ -286,10 +286,11 @@ async function invidiousMeta(id: string): Promise<VideoMeta | null> {
 }
 
 async function ytdlpMeta(id: string, front = false): Promise<VideoMeta> {
-  const run = async () => {
+  const run = (clients: string) => async () => {
     const proc = Bun.spawn(
-      // player_client bypasses the YouTube bot-check that blocks default clients today
-      ["yt-dlp", "--no-warnings", "--socket-timeout", "5", "--extractor-args", "youtube:player_client=mweb,tv", "--dump-json", `https://www.youtube.com/watch?v=${id}`],
+      // player_client picks the fastest client with a full, untranslated description:
+      // android measured ~2-2.6s vs ~4-5s for mweb (tv/ios got bot-checked/formatted away)
+      ["yt-dlp", "--no-warnings", "--socket-timeout", "5", "--extractor-args", `youtube:player_client=${clients}`, "--dump-json", `https://www.youtube.com/watch?v=${id}`],
       { stdout: "pipe", stderr: "ignore" },
     )
     const text = await new Response(proc.stdout).text()
@@ -302,9 +303,13 @@ async function ytdlpMeta(id: string, front = false): Promise<VideoMeta> {
       duration: j.duration ? fmtDuration(j.duration) : "",
     }
   }
-  // ponytail: pass `run` UNINVOKED — wrapping an IIFE made all spawns bypass limit() and thrash
+  // android first (~2s); if it ever gets bot-checked, fall through to the old mweb,tv combo
   try {
-    return await limit(run, front)
+    const m = await limit(run("android"), front)
+    if (m.description) return m
+  } catch {}
+  try {
+    return await limit(run("mweb,tv"), front)
   } catch {
     return EMPTY_META
   }
