@@ -166,7 +166,7 @@ async function invidiousUrls(id: string, mode: "video" | "audio"): Promise<Media
   const res = (f: any) => parseInt(String(f.resolution ?? ""), 10) || 0
   const aud = af
     .filter((f) => String(f.type ?? "").startsWith("audio"))
-    .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))
+    .sort((a, b) => Number(b.language_preference ?? -1) - Number(a.language_preference ?? -1) || (b.bitrate ?? 0) - (a.bitrate ?? 0))
   if (mode === "audio") return aud[0] ? { audioUrl: aud[0].url, videoUrl: undefined } : {}
   let vid = af.filter((f) => String(f.type ?? "").startsWith("video"))
   if (vid.length === 0) return {}
