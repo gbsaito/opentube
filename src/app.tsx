@@ -349,6 +349,19 @@ function currentList(): Video[] {
 function currentIndex(): number {
   return screen() === "results" ? sel() : storeIndex()
 }
+
+const [toast, setToast] = createSignal("")
+
+/** y yanks the current video's youtu.be link: OSC 52 escape writes the clipboard directly
+ *  (kitty/wezterm/alacritty/foot honour it, survives ssh, no xclip dependency) */
+function yankVideo(id: string | undefined): void {
+  if (!id) return
+  const url = `https://youtu.be/${id}`
+  process.stdout.write(`\x1b]52;c;${Buffer.from(url).toString("base64")}\x07`)
+  setToast(`yanked ${url}`)
+  clearTimeout((yankVideo as any).t)
+  ;(yankVideo as any).t = setTimeout(() => setToast(""), 2500)
+}
 function currentVideo(): Video | undefined {
   return currentList()[currentIndex()]
 }
@@ -841,6 +854,7 @@ export const App: Component = () => {
         void toggleMute()
         return
       }
+      if (e.name === "y") return yankVideo(npVideo?.id ?? undefined)
       if (e.name === "left" || e.name === "right") {
         seekTo(npTime() + (e.name === "right" ? 10 : -10))
         return
@@ -915,6 +929,9 @@ export const App: Component = () => {
         return subscribeCurrent()
       case "x":
         return deleteCurrent()
+      case "y":
+        // yank the focused row's link to the system clipboard (OSC 52)
+        return yankVideo(currentVideo()?.id)
       case "d":
         // full description modal for the current row
         const v = currentVideo()
@@ -1003,6 +1020,9 @@ const Chrome: Component<{ title: string }> = (props) => (
         <Span fg={settings().accent}>opentube</Span>
         <Span fg={theme.faint}> › </Span>
         <Span fg={theme.muted}>{props.title}</Span>
+        <Show when={toast()}>
+          {() => <Span fg={settings().accent}> · {toast()}</Span>}
+        </Show>
         <Show when={pageCount() > 1}>
           {() => <Span fg={theme.faint}> · page {page() + 1}/{pageCount()}{exhausted() ? "" : "+"}</Span>}
         </Show>
