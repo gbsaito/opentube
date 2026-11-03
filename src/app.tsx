@@ -183,6 +183,7 @@ async function fillOriginalTitles(body: Video[], visibleIds: string[]) {
 
 // description modal (d on a list row): full text, links clickable
 const [descFrom, setDescFrom] = createSignal<Screen | null>(null)
+let descScroller: { scrollBy: (n: number, unit?: string) => void } | null = null // scrollbox ref for j/k/arrows
 // where the user opened the current video from (results/history/playlists/...); esc from now-playing returns here
 const [playFrom, setPlayFrom] = createSignal<Screen | null>(null)
 const [descText, setDescText] = createSignal("")
@@ -657,9 +658,14 @@ export const App: Component = () => {
       }
     }
 
-    // description modal: esc returns to where it opened from, nothing else gets keystrokes
+    // description modal: esc returns to where it opened from; j/k/down/up scroll the text
     if (screen() === "desc") {
-      if (e.name === "escape") return setScreen(descFrom() ?? "results")
+      if (e.name === "escape") {
+        descScroller = null
+        return setScreen(descFrom() ?? "results")
+      }
+      if (e.name === "down" || e.name === "j") return void descScroller?.scrollBy(1)
+      if (e.name === "up" || e.name === "k") return void descScroller?.scrollBy(-1)
       return
     }
 
@@ -1123,7 +1129,7 @@ function DescScreen() {
   return (
     <box flexGrow={1} justifyContent="center" alignItems="center" backgroundColor={theme.bg}>
       <box width="90%" height="96%" border={["top", "bottom", "left", "right"]} borderStyle="single" borderColor={settings().accent} backgroundColor={theme.inputBg} paddingTop={1}>
-        <scrollbox scrollY flexGrow={1} scrollbarOptions={{ visible: false }}>
+        <scrollbox scrollY flexGrow={1} scrollbarOptions={{ visible: false }} ref={(r: any) => (descScroller = r)}>
           <For each={lines()}>{(pieces) => <DescLine pieces={pieces} />}</For>
         </scrollbox>
       </box>
