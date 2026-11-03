@@ -2,6 +2,7 @@
 import { createSignal, For, Show, type Component } from "solid-js"
 import { useKeyboard, useRenderer, render } from "@opentui/solid"
 import { appendFileSync } from "fs"
+import { format } from "util"
 import type { CliRenderer } from "@opentui/core"
 import { theme } from "./theme"
 import {
@@ -222,7 +223,9 @@ function prewarmSearch(q: string) {
   if (key.length < 3) return
   const hit = searchCache.get(key)
   if (hit && Date.now() - hit.at < SEARCH_TTL) return
-  searchCache.set(key, { at: Date.now(), rows: searchVideosWithFallback(key) })
+  const rows = searchVideosWithFallback(key)
+  searchCache.set(key, { at: Date.now(), rows })
+  void rows.catch(() => {}) // abandoned prewarm must not surface as an unhandled [ERROR] in the console overlay
   if (searchCache.size > 12) {
     const first = searchCache.keys().next().value
     if (first) searchCache.delete(first)
@@ -260,6 +263,7 @@ async function doSearch(q: string) {
     setVideos(await rows)
     void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
   } catch (e) {
+    searchCache.delete(q) // don't replay a poisoned cached promise on the next enter
     setVideos([])
     setError(ERR_MSG(e))
   } finally {
@@ -950,7 +954,19 @@ function Settings() {
   )
 }
 
+function dumpConsole() {
+  for (const level of ["log", "info", "warn", "error"] as const) {
+    const orig = console[level].bind(console)
+    console[level] = (...a: unknown[]) => {
+      try { appendFileSync("/tmp/opentube-console.log", `${new Date().toISOString()} [${level}] ${format(...a)}\n`) } catch {}
+      orig(...a)
+    }
+  }
+}
+
 export function mountApp() {
   loadSettings()
+  // debug: mirror the console overlay's entries to /tmp/opentube-console.log so they can be read later
+  if (process.env.OTUI_DEBUG) setTimeout(dumpConsole, 1000) // console is replaced by opentui at renderer start
   render(() => <App />, { useMouse: true }) // always-on mouse: drag-select, scroll, two-clicks
 }
