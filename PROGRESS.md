@@ -102,6 +102,7 @@
 - yt-dlp "infinite" search: was full-metadata crawl (~90s); now fast flat rows + lazy date fill.
 
 - History prompt dropdown border changed from accent to gray (theme.muted).
+- Home hint: added history prompt / when prompt_history is on; removed the word "focus" from switch and the "type to search" wording.
 ## pending user test
 - Settings: left/right cycles backend / invidious instance; enter edits results_count (cursor + backspace).
 - yt-dlp search returns rows in seconds; sidebar date fills after selection.
