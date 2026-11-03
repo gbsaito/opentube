@@ -230,10 +230,10 @@ async function updateThumb(v: Video | undefined) {
 }
 
 // --- derived helpers ---------------------------------------------------------------
-// o cycles the sort field (natural/title/views/date); O (shift+o) flips asc/desc
-const [sortKey, setSortKey] = createSignal<"natural" | "title" | "views" | "date">("natural")
-const [sortAsc, setSortAsc] = createSignal(false)
-const SORT_FIELDS = ["natural", "title", "views", "date"] as const
+// o cycles the sort field (title/views/date); O (shift+o) flips asc/desc
+const [sortKey, setSortKey] = createSignal<"title" | "views" | "date">("title")
+const [sortAsc, setSortAsc] = createSignal(true)
+const SORT_FIELDS = ["title", "views", "date"] as const
 function viewVal(s: string | undefined): number {
   return parseInt(String(s ?? "").replace(/[^\d]/g, ""), 10) || 0
 }
@@ -247,12 +247,11 @@ function dateVal(v: Video): number {
 }
 function currentList(): Video[] {
   const base = screen() === "results" ? videos() : store()?.items ?? []
-  const k = sortKey()
-  if (k === "natural") return base
-  const key = { title: (v: Video) => v.title.toLowerCase(), views: (v: Video) => viewVal(v.views), date: dateVal }[k]
+  const key = { title: (v: Video) => v.title.toLowerCase(), views: (v: Video) => viewVal(v.views), date: dateVal }[sortKey()]
   const dir = sortAsc() ? 1 : -1
   const cmp = (a: string | number, b: string | number) => (a < b ? -1 : a > b ? 1 : 0)
-  return base.slice().sort((a, b) => cmp(key(a), key(b)) * dir)
+  // title tie-break so O visibly flips lists whose primary key ties (search rows often share it)
+  return base.slice().sort((a, b) => cmp(key(a), key(b)) * dir || cmp(a.title.toLowerCase(), b.title.toLowerCase()))
 }
 function currentIndex(): number {
   return screen() === "results" ? sel() : storeIndex()
@@ -500,6 +499,8 @@ export const App: Component = () => {
   renderer.root.onMouse = (e) => {
     if (e.type !== "scroll") return
     if (screen() === "desc") return // description modal: keep it still, don't steer the list underneath
+    // horizontal wheel/swipe must not steer the list (also avoids sideways title drift in rows)
+    if (e.scroll?.direction === "left" || e.scroll?.direction === "right") return
     // kitty fires several scroll events per notch; without throttling the cursor skips rows
     const now = Date.now()
     if (now - lastScrollStep < 70) return
@@ -664,7 +665,7 @@ export const App: Component = () => {
       case "o":
       case "O": {
         if (e.shift || e.name === "O") setSortAsc((a) => !a)
-        else setSortKey((k) => k === "natural" ? "title" : k === "title" ? "views" : k === "views" ? "date" : "natural")
+        else setSortKey((k) => (k === "title" ? "views" : k === "views" ? "date" : "title"))
         setStoreIndex(0)
         setSel(0)
         setPage(0)
@@ -988,6 +989,7 @@ function Results() {
       <scrollbox
         ref={(el: any) => (listScrollRef = el)}
         scrollY
+        contentOptions={{ width: "100%" }} // rows never overflow the viewport — horizontal wheel has zero range
         flexGrow={1}
         border={["right"]}
         borderStyle="single"
