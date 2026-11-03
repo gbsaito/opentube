@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import { createSignal, For, Show, type Component } from "solid-js"
+import { createSignal, createMemo, For, Show, type Component } from "solid-js"
 import { useKeyboard, useRenderer, render } from "@opentui/solid"
 import { appendFileSync } from "fs"
 import { format } from "util"
@@ -14,6 +14,7 @@ import {
   playlists,
   subscriptions,
   history,
+  queries,
   type Store,
   type Video,
   type Settings,
@@ -87,6 +88,19 @@ const [exhausted, setExhausted] = createSignal(false)
 const [sRow, setSRow] = createSignal(0)
 const [editing, setEditing] = createSignal<string | null>(null)
 const [editBuf, setEditBuf] = createSignal("")
+
+// prompt-history autosuggest (/ and @ prefix while typing)
+const [suggestOpen, setSuggestOpen] = createSignal(false)
+const [sugIdx, setSugIdx] = createSignal(0)
+function suggestFor(buf: string): Video[] {
+  if (!settings().prompt_history) return []
+  if (!(buf.startsWith("/") || buf.startsWith("@"))) return []
+  const term = buf.slice(1).trim().toLowerCase()
+  if (term.length < 1) return []
+  return queries.items.filter((e) => e.title.toLowerCase().includes(term)).slice(0, 8)
+}
+const sugList = createMemo<Video[]>(() => suggestFor(query()))
+const isSuggesting = () => sugList().length > 0
 
 function commitEdit() {
   const key = editing()
@@ -249,6 +263,7 @@ async function doSearch(q: string) {
   if (!q.trim()) return
   if (q === lastSearch.q && Date.now() - lastSearch.at < 400) return // double delivery (input submit + global keyhook)
   lastSearch = { q, at: Date.now() }
+  if (settings().prompt_history) queries.add({ id: q, title: q, channel: "", date: "", description: "" }) // record prompt history
   setQuery(q)
   setScreen("results")
   setPage(0)
@@ -426,6 +441,33 @@ export const App: Component = () => {
       if (cp >= 32 && cp !== 127) setEditBuf(editBuf() + e.sequence)
       else if (e.name === "backspace") setEditBuf(editBuf().slice(0, -1))
       return
+    }
+
+    // prompt-history autosuggest (/ or @ typed while the home searchbox is focused): nav before homeKeys
+    if (screen() === "home" && inputMode() && isSuggesting()) {
+      const name = e.name === "kpenter" || e.name === "enter" || e.name === "linefeed" ? "return" : e.name
+      if (name === "up" || name === "k") {
+        e.stopPropagation()
+        setSugIdx((i) => (i - 1 + sugList().length) % sugList().length)
+        return
+      }
+      if (name === "down" || name === "j") {
+        e.stopPropagation()
+        setSugIdx((i) => (i + 1) % sugList().length)
+        return
+      }
+      if (name === "return") {
+        e.stopPropagation()
+        const pick = sugList()[sugIdx()]
+        setSuggestOpen(false)
+        if (pick) void doSearch(pick.title) // enter runs the highlighted history search
+        return
+      }
+      if (name === "escape") {
+        e.stopPropagation()
+        setSuggestOpen(false)
+        return
+      }
     }
 
     // q quits unless the user is typing inside the search input
@@ -729,6 +771,8 @@ function Home() {
           focusedBackgroundColor={theme.inputBg}
           onInput={(value: string) => {
             setQuery(value)
+            setSugIdx(0)
+            setSuggestOpen(suggestFor(value).length > 0) // dropdown opens on / or @ prefix with history matches
             scheduleTypeahead() // rows start fetching before enter is pressed
           }}
           onKeyDown={(e: any) => {
@@ -737,33 +781,51 @@ function Home() {
         />
       </box>
       <box height={1} />
-      <box width="62%" maxWidth={72} alignSelf="center">
-        <text fg={theme.faint}>tab switch focus · ↑↓ move · enter open · type to search</text>
-      </box>
-      <box height={1} />
-      <box width="62%" maxWidth={72} alignSelf="center">
-        <For each={QUICK}>
-          {(item, i) => {
-            const active = () => i() === quickIndex() && !inputMode()
-            return (
-              <box
-                height={1}
-                backgroundColor={active() ? `#${settings().accent.slice(1)}4d` : undefined}
-                onMouseDown={(e: any) => {
-                  if (e.button !== 0) return
-                  setQuickIndex(i())
-                  setInputMode(false)
-                  activateQuick(item)
-                }}
-              >
-                <text fg={active() ? theme.fg : theme.muted}>
-                  {QUICK_ICON[item] ?? "•"} {QUICK_LABEL[item] ?? item}
-                </text>
-              </box>
-            )
-          }}
-        </For>
-      </box>
+      {!suggestOpen() && (
+        <>
+          <box width="62%" maxWidth={72} alignSelf="center">
+            <text fg={theme.faint}>tab switch focus · ↑↓ move · enter open · type to search</text>
+          </box>
+          <box height={1} />
+          <box width="62%" maxWidth={72} alignSelf="center">
+            <For each={QUICK}>
+              {(item, i) => {
+                const active = () => i() === quickIndex() && !inputMode()
+                return (
+                  <box
+                    height={1}
+                    backgroundColor={active() ? `#${settings().accent.slice(1)}4d` : undefined}
+                    onMouseDown={(e: any) => {
+                      if (e.button !== 0) return
+                      setQuickIndex(i())
+                      setInputMode(false)
+                      activateQuick(item)
+                    }}
+                  >
+                    <text fg={active() ? theme.fg : theme.muted}>
+                      {QUICK_ICON[item] ?? "•"} {QUICK_LABEL[item] ?? item}
+                    </text>
+                  </box>
+                )
+              }}
+            </For>
+          </box>
+        </>
+      )}
+      {suggestOpen() && (
+        <box width="62%" maxWidth={72} alignSelf="center" border={["left"]} borderStyle="single" borderColor={settings().accent}>
+          <For each={sugList()}>
+            {(s, i) => {
+              const active = () => i() === sugIdx()
+              return (
+                <box height={1} backgroundColor={active() ? `#${settings().accent.slice(1)}4d` : undefined}>
+                  <text fg={active() ? theme.fg : theme.muted}>{s.title.slice(0, 68)}</text>
+                </box>
+              )
+            }}
+          </For>
+        </box>
+      )}
     </box>
   )
 }

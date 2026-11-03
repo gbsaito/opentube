@@ -169,6 +169,8 @@ export class Store {
 export const history = new Store("history")
 export const playlists = new Store("playlists")
 export const subscriptions = new Store("subscriptions")
+/** past search prompts (id = the query string itself); feeds the / and @ autosuggest dropdown */
+export const queries = new Store("queries")
 
 /** name -> Store map used by the quick access menu */
 export const quickAccess: [string, Store][] = [
