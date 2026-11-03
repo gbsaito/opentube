@@ -21,6 +21,8 @@ export type Quality = "auto" | "best" | "lowest" | "480p" | "720p" | "1080p" | "
 export interface Settings {
   backend: "yt-dlp" | "invidious"
   results_count: number
+  page_count: number
+  prompt_history: boolean
   invidious_instance: string
   previews: boolean // info sidebar
   image_previews: boolean // thumbnail
@@ -37,6 +39,8 @@ export const QUALITY_ORDER = QUALITIES
 const DEFAULTS: Settings = {
   backend: "yt-dlp",
   results_count: 25,
+  page_count: 2,
+  prompt_history: true,
   invidious_instance: "https://yt.chocolatemoo53.com",
   previews: true,
   image_previews: true,
@@ -83,6 +87,8 @@ export function loadSettings() {
       backend,
       invidious_instance: conf.invidious_instance ?? DEFAULTS.invidious_instance,
       results_count: Number(conf.results_count ?? DEFAULTS.results_count),
+      page_count: Number(conf.page_count ?? DEFAULTS.page_count),
+      prompt_history: conf["prompt_history"] !== undefined ? conf["prompt_history"] === "true" : DEFAULTS.prompt_history,
       previews,
       image_previews: imagePreviews,
       image_renderer: imageRenderer,
@@ -105,6 +111,8 @@ export function saveConf() {
       "# opentube settings",
       `backend = ${s.backend}`,
       `results_count = ${s.results_count}`,
+      `page_count = ${s.page_count}`,
+      `prompt_history = ${s.prompt_history}`,
       `invidious_instance = ${s.invidious_instance}`,
       `previews = ${s.previews}`,
       `image_previews = ${s.image_previews}`,

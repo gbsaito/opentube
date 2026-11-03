@@ -48,7 +48,8 @@ const QUICK_LABEL: Record<string, string> = {
   settings: "Settings",
   quit: "Quit",
 }
-const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews", "title_font", "accent", "fullscreen", "quality"]
+const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "page_count", "prompt_history", "previews", "image_previews", "title_font", "accent", "fullscreen", "quality"]
+const EDITABLE_NUMBERS: readonly string[] = ["results_count", "page_count"]
 const INVIDIOUS_INSTANCES: string[] = [
   "https://yt.chocolatemoo53.com",
   "https://inv.nadeko.net",
@@ -91,6 +92,7 @@ function commitEdit() {
   if (!key) return setEditing(null)
   const s = { ...settings() } as any
   if (key === "results_count") s.results_count = Math.min(Math.max(parseInt(editBuf(), 10) || 25, 1), 50)
+  else if (key === "page_count") s.page_count = Math.min(Math.max(parseInt(editBuf(), 10) || 2, 1), 20) // ponytail: no-op setting yet; range guessed until wired
   else s[key] = editBuf()
   setSettings(s)
   saveConf()
@@ -402,7 +404,7 @@ export const App: Component = () => {
           const idx = INVIDIOUS_INSTANCES.indexOf(settings().invidious_instance)
           const next = idx < 0 ? (dir < 0 ? INVIDIOUS_INSTANCES.length - 1 : 0) : INVIDIOUS_INSTANCES[(idx + dir + INVIDIOUS_INSTANCES.length) % INVIDIOUS_INSTANCES.length]!
           setSettings({ ...settings(), invidious_instance: next } as any)
-        } else if (row === "previews" || row === "image_previews" || row === "fullscreen") {
+        } else if (row === "previews" || row === "image_previews" || row === "fullscreen" || row === "prompt_history") {
           setSettings({ ...settings(), [row]: !settings()[row] } as any)
         } else if (row === "quality") {
           const idx = QUALITY_ORDER.indexOf(s.quality)
@@ -410,9 +412,9 @@ export const App: Component = () => {
           setSettings({ ...settings(), quality: next } as any)
           // invalidate prefetched URLs resolved under the old quality
           urlCacheClear()
-        } else if (row === "results_count") {
-          setEditing("results_count")
-          setEditBuf(String(settings().results_count))
+        } else if (EDITABLE_NUMBERS.includes(row)) {
+          setEditing(row)
+          setEditBuf(String((settings() as any)[row]))
           return
         }
         saveConf()
@@ -420,9 +422,9 @@ export const App: Component = () => {
       if (e.name === "left") return cycle(-1)
       if (e.name === "right") return cycle(1)
       if (e.name === "return" || e.name === "space") {
-        if (row === "results_count") {
-          setEditing("results_count")
-          setEditBuf(String(settings().results_count))
+        if (EDITABLE_NUMBERS.includes(row)) {
+          setEditing(row)
+          setEditBuf(String((settings() as any)[row]))
         } else {
           return cycle(1)
         }
@@ -841,7 +843,7 @@ function Settings() {
       <For each={rows()}>
         {(row, i) => {
           const focused = () => i() === sRow()
-          const isBool = () => row === "previews" || row === "image_previews"
+          const isBool = () => row === "previews" || row === "image_previews" || row === "prompt_history"
           const isEditing = () => editing() === row
           const value = () => {
             const s = settings() as any
