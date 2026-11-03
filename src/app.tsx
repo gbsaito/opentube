@@ -360,15 +360,14 @@ async function doSearch(q: string) {
   setError("")
   setSel(0)
   setVideos([]) // drop stale rows from previous searches immediately
+  setThumb(null) // drop the previous query's thumbnail BEFORE the ride starts — clearing after
+  thumbUrl = "" // updateThumb launches would poison its stale-guard and the new thumb never lands
   try {
     const cached = searchCache.get(q)
     const rows = cached && Date.now() - cached.at < SEARCH_TTL ? cached.rows : searchVideosWithFallback(q)
     searchCache.set(q, { at: Date.now(), rows })
     setVideos(await rows)
     void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
-    // new search: drop the previous video's thumbnail until the first row lands
-    setThumb(null)
-    thumbUrl = ""
     // background: replace translated search titles with original-language ones (visible page first)
     const body = videos()
     const size = pageSize()
