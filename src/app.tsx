@@ -872,27 +872,28 @@ const Sidebar: Component = () => {
         <Show when={v()}>
           {() => (
             <>
-              <text fg={theme.fg}>{v()!.title}</text>
+              {/* optional-chained: solid may re-run this closure one tick past Show's teardown while v() clears */}
+              <text fg={theme.fg}>{v()?.title ?? ""}</text>
               <text>
                 <Span fg={theme.muted}>Channel: </Span>
-                <Span fg={theme.fg}>{v()!.channel}</Span>
+                <Span fg={theme.fg}>{v()?.channel}</Span>
               </text>
               <text>
                 <Span fg={theme.muted}>Upload Date: </Span>
-                <Span fg={theme.fg}>{v()!.date || sidebarMeta()?.date || ""}</Span>
+                <Span fg={theme.fg}>{v()?.date || sidebarMeta()?.date || ""}</Span>
               </text>
               <text>
                 <Span fg={theme.muted}>Views: </Span>
-                <Span fg={theme.fg}>{fmtViews(v()!.views || sidebarMeta()?.views || "")}</Span>
+                <Span fg={theme.fg}>{fmtViews(v()?.views || sidebarMeta()?.views || "")}</Span>
               </text>
               <text>
                 <Span fg={theme.muted}>Duration: </Span>
-                <Span fg={theme.fg}>{v()!.duration || sidebarMeta()?.duration || ""}</Span>
+                <Span fg={theme.fg}>{v()?.duration || sidebarMeta()?.duration || ""}</Span>
               </text>
-              <Show when={v()!.description || sidebarMeta()?.description}>
+              <Show when={v()?.description || sidebarMeta()?.description}>
                 {() => {
                   // respect original line breaks / spaces: split on newlines, trim, per-line truncate
-                  const desc = (v()!.description || sidebarMeta()?.description || "")
+                  const desc = (v()?.description || sidebarMeta()?.description || "")
                   const shown = desc
                     .split(/\r\n|\r|\n/)
                     .map((l) => l.trim())
