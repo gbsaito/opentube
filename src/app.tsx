@@ -24,7 +24,7 @@ import {
 } from "./config"
 import { searchVideos, searchVideosWithFallback, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
 import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear, stopPlayback, onPlaybackEnd, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
-import { settle, limit } from "./spawn"
+import { settle } from "./spawn"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
 const Span: Component<any> = (props) => <span {...props} />
@@ -157,7 +157,9 @@ function setOriginalTitle(id: string, m: VideoMeta) {
 }
 
 // background pass: original titles only exist on the per-video watch page (search rows ship translated
-// ones) — fan out over all rows under the shared spawn limiter, visible page first for quick ordering
+// ones) — fan out over all rows; spawn count stays bounded by ytdlpMeta's own inner limiter
+// (ponytail: no outer limit() here — nesting it would deadlock: outer slots held while inner
+// waits on the same queue)
 let titleFillSeq = 0
 const originalTitleDone = new Set<string>()
 async function fillOriginalTitles(body: Video[], visibleIds: string[]) {
@@ -166,7 +168,7 @@ async function fillOriginalTitles(body: Video[], visibleIds: string[]) {
   const list = [...body.filter((v) => vis.has(v.id)), ...body.filter((v) => !vis.has(v.id))]
   await Promise.allSettled(
     list.map((v) =>
-      limit(() => videoMetaFull(v.id))
+      videoMetaFull(v.id)
         .then((m) => {
           if (seq === titleFillSeq && m.title) {
             originalTitleDone.add(v.id)
@@ -190,9 +192,10 @@ async function loadDesc(id: string) {
   void videoMeta(id).then((m) => {
     if (descId === id && m.description.trim()) setDescText(m.description)
   }).catch(() => {})
-  // full phase: final word, even when it is truly empty
+  // full phase: final word, even when it is truly empty; front=true so it never queues
+  // behind the background title-fill backlog (that starvation = "modal never shows text")
   if (descId === id) {
-    const m = await videoMetaFull(id)
+    const m = await videoMetaFull(id, true)
     if (descId === id) setDescText(m.description.trim() || "(no description)")
   }
 }

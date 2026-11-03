@@ -209,11 +209,14 @@ function putCache(id: string, m: VideoMeta) {
 }
 
 /** merge both sources field-by-field: first non-empty wins (invidious preferred: usually fastest);
- *  title prefers yt-dlp — the watch page serves the untranslated title, the APIs hand back translated ones */
+ *  title prefers yt-dlp — the watch page serves the untranslated title, the APIs hand back translated ones;
+ *  description prefers the longer text — some invidious instances truncate/ship empty descriptions */
 function mergeMeta(iv: VideoMeta | null, yt: VideoMeta | null): VideoMeta {
+  const ivd = iv?.description ?? ""
+  const ytd = yt?.description ?? ""
   return {
     title: yt?.title || iv?.title || "",
-    description: iv?.description || yt?.description || "",
+    description: ytd.length > ivd.length ? ytd : ivd,
     date: iv?.date || yt?.date || "",
     views: iv?.views || yt?.views || "",
     duration: iv?.duration || yt?.duration || "",
@@ -227,7 +230,7 @@ let inflight: { id: string; task: MetaTask } | null = null
 
 const isFull = (m: VideoMeta) => !!(m.description && m.date && m.views && m.duration)
 
-function metaTask(id: string): MetaTask {
+function metaTask(id: string, front = false): MetaTask {
   const ivP = invidiousMeta(id)
   const fast = ivP
     .then((m) => m ?? EMPTY_META)
@@ -242,7 +245,7 @@ function metaTask(id: string): MetaTask {
       putCache(id, meta)
       return meta
     }
-    const yt = await ytdlpMeta(id).catch(() => null)
+    const yt = await ytdlpMeta(id, front).catch(() => null)
     meta = mergeMeta(iv, yt)
     putCache(id, meta)
     return meta
@@ -259,11 +262,12 @@ export async function videoMeta(id: string): Promise<VideoMeta> {
   return inflight.task.fast
 }
 
-/** complete merged metadata: waits for both sources, merges every non-empty field */
-export async function videoMetaFull(id: string): Promise<VideoMeta> {
+/** complete merged metadata: waits for both sources, merges every non-empty field;
+ *  front=true jumps the spawn queue (open modal outruns the background title fill) */
+export async function videoMetaFull(id: string, front = false): Promise<VideoMeta> {
   const cached = metaCache.get(id)
   if (cached && cached.description && cached.date && cached.views && cached.duration) return cached
-  if (inflight?.id !== id) inflight = { id, task: metaTask(id) }
+  if (inflight?.id !== id) inflight = { id, task: metaTask(id, front) }
   return inflight.task.full
 }
 
@@ -279,7 +283,7 @@ async function invidiousMeta(id: string): Promise<VideoMeta | null> {
   }
 }
 
-async function ytdlpMeta(id: string): Promise<VideoMeta> {
+async function ytdlpMeta(id: string, front = false): Promise<VideoMeta> {
   try {
     return await limit(() =>
       (async () => {

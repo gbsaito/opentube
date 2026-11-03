@@ -3,7 +3,7 @@ const MAX = 4
 let running = 0
 const queue: Array<() => void> = []
 
-export function limit<T>(fn: () => Promise<T>): Promise<T> {
+export function limit<T>(fn: () => Promise<T>, front = false): Promise<T> {
   return new Promise((resolve, reject) => {
     const run = () => {
       running++
@@ -13,7 +13,7 @@ export function limit<T>(fn: () => Promise<T>): Promise<T> {
       })
     }
     if (running < MAX) run()
-    else queue.push(run)
+    else (front ? queue.unshift : queue.push).call(queue, run)
   })
 }
 
