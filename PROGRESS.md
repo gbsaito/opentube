@@ -101,6 +101,7 @@
 - Sidebar description now shows: fetched lazily per selection.
 - yt-dlp "infinite" search: was full-metadata crawl (~90s); now fast flat rows + lazy date fill.
 
+- History prompt dropdown border changed from accent to gray (theme.muted).
 ## pending user test
 - Settings: left/right cycles backend / invidious instance; enter edits results_count (cursor + backspace).
 - yt-dlp search returns rows in seconds; sidebar date fills after selection.
