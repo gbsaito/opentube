@@ -113,6 +113,26 @@ const BACKENDS: Record<BackendKey, (query: string) => Promise<Video[]>> = {
   invidious: viaInvidious,
 }
 
+/** raw /api/v1/videos JSON for the player's fast URL resolver; races all instances, first success wins */
+export function invidiousVideoRaw(id: string): Promise<any | null> {
+  const urls = candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/videos/${id}`)
+  return new Promise((resolve, reject) => {
+    let pending = urls.length
+    let lastErr: unknown
+    for (const u of urls) {
+      fetch(u, { signal: AbortSignal.timeout(4000), headers: { "User-Agent": "Mozilla/5.0" } })
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          resolve(await res.json())
+        })
+        .catch((e) => {
+          lastErr = e
+          if (--pending === 0) reject(lastErr)
+        })
+    }
+  })
+}
+
 export function searchVideos(query: string): Promise<Video[]> {
   return BACKENDS[settings().backend](query)
 }
@@ -192,19 +212,26 @@ export async function videoMetaFull(id: string): Promise<VideoMeta> {
 
 async function invidiousMeta(id: string): Promise<VideoMeta | null> {
   const urls = candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/videos/${id}`)
-  // race every instance at once; prefer the first one that actually includes a description
-  // (some instances serve date/views with an empty description → previously waited for yt-dlp)
-  const results = await Promise.allSettled(
-    urls.map(async (u) => {
-      const res = await fetch(u, { signal: AbortSignal.timeout(4000) })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      return (await res.json()) as any
-    }),
-  )
-  const js = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []))
-  if (js.length === 0) return null
-  const withDesc = js.find((j) => (j.description ?? j.descriptionHtml ?? "").trim().length > 0) ?? js[0]
-  const j = withDesc
+  // resolve as soon as an instance with a non-empty description answers; otherwise
+  // fall back to the first success once every instance settled (many have blank desc)
+  const j: any = await new Promise((resolve) => {
+    let pending = urls.length
+    let first: any = null
+    for (const u of urls) {
+      fetch(u, { signal: AbortSignal.timeout(4000), headers: { "User-Agent": "Mozilla/5.0" } })
+        .then(async (res: Response) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          const js: any = await res.json()
+          if ((js.description ?? js.descriptionHtml ?? "").trim().length > 0) resolve(js)
+          else if (!first) first = js
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (--pending === 0) resolve(first)
+        })
+    }
+  })
+  if (!j) return null
   return {
     description: clean(String(j.description ?? j.descriptionHtml ?? "")),
     date: j.publishedText ?? "",

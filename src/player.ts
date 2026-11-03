@@ -1,6 +1,7 @@
 import type { Video, Settings } from "./config"
 import { settings } from "./config"
 import { limit } from "./spawn"
+import { invidiousVideoRaw } from "./backends"
 import { createSignal } from "solid-js"
 
 const url = (v: Video) => `https://youtube.com/watch?v=${v.id}`
@@ -146,25 +147,58 @@ function ytdlFormat(mode: "video" | "audio"): string {
   }
 }
 
+/** quality cap in px, or 0 for unlimited */
+function qualityCap(q: string): number {
+  return ({ "480p": 480, "720p": 720, "1080p": 1080, "2160p": 2160 } as Record<string, number>)[q] ?? 0
+}
+
+/** fast path: invidious serves direct googlevideo URLs in ~2s (yt-dlp resolve takes ~7s) */
+async function invidiousUrls(id: string, mode: "video" | "audio"): Promise<MediaUrls> {
+  const j = await invidiousVideoRaw(id)
+  if (!j) return {}
+  const af: any[] = (j.adaptiveFormats ?? []).filter((f: any) => f?.url)
+  const res = (f: any) => parseInt(String(f.resolution ?? ""), 10) || 0
+  const aud = af
+    .filter((f) => String(f.type ?? "").startsWith("audio"))
+    .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))
+  if (mode === "audio") return aud[0] ? { audioUrl: aud[0].url, videoUrl: undefined } : {}
+  let vid = af.filter((f) => String(f.type ?? "").startsWith("video"))
+  if (vid.length === 0) return {}
+  if (settings().quality === "lowest") {
+    vid.sort((a, b) => res(a) - res(b) || (a.bitrate ?? 0) - (b.bitrate ?? 0))
+  } else {
+    vid.sort((a, b) => res(b) - res(a) || (b.bitrate ?? 0) - (a.bitrate ?? 0))
+    const cap = qualityCap(settings().quality)
+    if (cap) {
+      const capped = vid.filter((f) => res(f) > 0 && res(f) <= cap)
+      vid = capped.length > 0 ? capped : [vid[vid.length - 1]!] // fall back to the smallest stream
+    }
+  }
+  return { videoUrl: vid[0].url, audioUrl: aud[0]?.url }
+}
+
+/** slow fallback: full yt-dlp format-selector resolve */
+async function ytdlpUrls(id: string, mode: "video" | "audio"): Promise<MediaUrls> {
+  try {
+    const fmt = ytdlFormat(mode)
+    const proc = Bun.spawn(["yt-dlp", "--no-warnings", "--socket-timeout", "5", "-f", fmt, "--print", "urls", `https://youtube.com/watch?v=${id}`], {
+      stdout: "pipe",
+      stderr: "ignore",
+    })
+    const text = await new Response(proc.stdout).text()
+    const urls = text.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("http"))
+    if (urls.length === 0) return {}
+    if (urls.length === 1) return { videoUrl: urls[0]!, audioUrl: mode === "audio" ? urls[0]! : undefined }
+    return { videoUrl: urls[0]!, audioUrl: urls[1]! } // bv*+ba: first = video, second = audio
+  } catch {
+    return {}
+  }
+}
+
 function resolveUrls(id: string, mode: "video" | "audio"):
  Promise<MediaUrls> {
   return limit(() =>
-    (async () => {
-      try {
-        const fmt = ytdlFormat(mode)
-        const proc = Bun.spawn(["yt-dlp", "--no-warnings", "--socket-timeout", "5", "-f", fmt, "--print", "urls", `https://youtube.com/watch?v=${id}`], {
-          stdout: "pipe",
-          stderr: "ignore",
-        })
-        const text = await new Response(proc.stdout).text()
-        const urls = text.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("http"))
-        if (urls.length === 0) return {}
-        if (urls.length === 1) return { videoUrl: urls[0]!, audioUrl: mode === "audio" ? urls[0]! : undefined }
-        return { videoUrl: urls[0]!, audioUrl: urls[1]! } // bv*+ba: first = video, second = audio
-      } catch {
-        return {}
-      }
-    })(),
+    invidiousUrls(id, mode).then((u) => (u.videoUrl || u.audioUrl ? u : ytdlpUrls(id, mode))),
   )
 }
 
@@ -190,8 +224,15 @@ export function play(v: Video, mode: "video" | "audio") {
 }
 
 async function doPlay(v: Video, mode: "video" | "audio") {
-  prewarm(v, mode)
-  const u = await urlCache.get(`${settings().quality}:${mode}:${v.id}`)
+  // audio reuses the video prewarm's resolved pair (video prewarm on selection already
+  // carries the best audio URL) instead of a second ~7s yt-dlp resolve
+  const q = settings().quality
+  prewarm(v)
+  let u = await urlCache.get(`${q}:video:${v.id}`)
+  if (mode === "audio" && !u?.audioUrl) {
+    prewarm(v, "audio")
+    u = await urlCache.get(`${q}:audio:${v.id}`)
+  }
   stopCurrent()
   paused = false
   setNpPaused(false)
