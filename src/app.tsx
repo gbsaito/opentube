@@ -818,7 +818,7 @@ function Home() {
         </>
       )}
       {suggestOpen() && (
-        <box width="62%" maxWidth={72} alignSelf="center" border={["left"]} borderStyle="single" borderColor={settings().accent}>
+        <box width="62%" maxWidth={72} alignSelf="center" border={["left"]} borderStyle="single" borderColor={theme.muted}>
           <For each={sugList()}>
             {(s, i) => {
               const active = () => i() === sugIdx()
