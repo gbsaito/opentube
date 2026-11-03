@@ -1109,9 +1109,12 @@ const DescLine: Component<{ pieces: Array<{ t: string; url?: string }> }> = (pro
 function DescScreen() {
   const lines = () => {
     const acc: Array<Array<{ t: string; url?: string }>> = []
-    // descriptions render as ONE line (multi-line -> single line)
-    for (const l of descText().split(/\r\n|\r|\n/).map((s) => s.trim()).filter((s) => s.length > 0)) {
-      acc.push(descPieces(l, 92))
+    // descriptions: more than 2 line breaks -> single line; up to 2 breaks keep as lines
+    const parts = descText().split(/\r\n|\r|\n/).map((s) => s.trim()).filter((s) => s.length > 0)
+    if (parts.length > 3) {
+      acc.push(descPieces(parts.join(" "), 92))
+    } else {
+      for (const l of parts) acc.push(descPieces(l, 92))
     }
     return acc
   }
@@ -1181,13 +1184,13 @@ const Sidebar: Component = () => {
                   // full metadata only: no short/flat snippet fallback — an empty area until the
                   // full text lands (row descriptions are yt-dlp flat-search fragments, not full)
                   const desc = sidebarMeta()?.description || ""
-                  // one line: more than a single line break -> collapse to a single line
-                  const shown = desc
+                  // more than 2 line breaks -> single line; up to 2 breaks keep as lines
+                  const parts = desc.split(/\r\n|\r|\n/).map((l) => l.trim()).filter((l) => l.length > 0)
+                  const shown = (parts.length > 3 ? parts.join(" ") : parts.join("\n"))
                     .split(/\r\n|\r|\n/)
-                    .map((l) => l.trim())
+                    .map((l) => l.slice(0, 68))
                     .filter((l) => l.length > 0)
-                    .join(" ")
-                    .slice(0, 68)
+                    .join("\n")
                   return <text fg={theme.faint}>{shown}</text>
                 }}
               </Show>
