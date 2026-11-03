@@ -48,7 +48,7 @@ const QUICK_LABEL: Record<string, string> = {
   settings: "Settings",
   quit: "Quit",
 }
-const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews", "title_font", "accent", "mouse", "fullscreen", "quality"]
+const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "previews", "image_previews", "title_font", "accent", "fullscreen", "quality"]
 const INVIDIOUS_INSTANCES: string[] = [
   "https://yt.chocolatemoo53.com",
   "https://inv.nadeko.net",
@@ -286,8 +286,10 @@ function refreshSidebar(v: Video | undefined) {
   // doesn't fire one yt-dlp/meta spawn per row (was freezing the whole PC at 50 results)
   sidebarDeferrer(() => {
     prewarm(row)
-    void Promise.all([updateThumb(row), updateMeta(row)])
+    void updateMeta(row)
   })
+  // thumbnails are a ~50ms CDN fetch: straight away, not debounced
+  void updateThumb(row)
 }
 let sidebarRow: string | undefined
 const sidebarDeferrer = settle(350, (fn: () => void) => fn())
@@ -397,10 +399,6 @@ export const App: Component = () => {
           setSettings({ ...settings(), invidious_instance: next } as any)
         } else if (row === "previews" || row === "image_previews" || row === "fullscreen") {
           setSettings({ ...settings(), [row]: !settings()[row] } as any)
-        } else if (row === "mouse") {
-          const on = !settings().mouse
-          setSettings({ ...settings(), mouse: on } as any)
-          try { renderer.useMouse = on } catch {} // live toggle; same knob as launch
         } else if (row === "quality") {
           const idx = QUALITY_ORDER.indexOf(s.quality)
           const next = QUALITY_ORDER[(idx + dir + QUALITY_ORDER.length) % QUALITY_ORDER.length]!
@@ -838,7 +836,7 @@ function Settings() {
       <For each={rows()}>
         {(row, i) => {
           const focused = () => i() === sRow()
-          const isBool = () => row === "previews" || row === "image_previews" || row === "mouse"
+          const isBool = () => row === "previews" || row === "image_previews"
           const isEditing = () => editing() === row
           const value = () => {
             const s = settings() as any
@@ -876,5 +874,5 @@ function Settings() {
 
 export function mountApp() {
   loadSettings()
-  render(() => <App />, { useMouse: settings().mouse })
+  render(() => <App />, { useMouse: true }) // always-on mouse: drag-select, scroll, two-clicks
 }

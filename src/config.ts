@@ -16,6 +16,7 @@ export interface Video {
 
 // --- settings (.conf) -------------------------------------------------------
 export type Quality = "auto" | "best" | "lowest" | "480p" | "720p" | "1080p" | "2160p" | "audio"
+// YT-USER: mouse is always on; the old on/off toggle is gone (kitty maps wheel→arrows natively when off)
 export interface Settings {
   backend: "yt-dlp" | "invidious"
   results_count: number
@@ -25,7 +26,6 @@ export interface Settings {
   image_renderer: "auto" | "icat" | "sixel" | "chafa"
   title_font: "tiny" | "block" | "shade" | "slick" | "huge" | "grid" | "pallet"
   accent: string
-  mouse: boolean
   fullscreen: boolean
   quality: Quality
 }
@@ -42,7 +42,6 @@ const DEFAULTS: Settings = {
   image_renderer: "auto",
   title_font: "block",
   accent: "#c084fc",
-  mouse: true,
   fullscreen: false,
   quality: "auto",
 }
@@ -76,7 +75,6 @@ export function loadSettings() {
     const imageRenderer = RENDERERS.includes(conf["image_renderer"] as Settings["image_renderer"]) ? (conf["image_renderer"] as Settings["image_renderer"]) : DEFAULTS.image_renderer
     const titleFont = FONTS.includes(conf["title_font"] as Settings["title_font"]) ? (conf["title_font"] as Settings["title_font"]) : DEFAULTS.title_font
     const accent = conf.accent && ACCENT_COLORS.includes(conf.accent) ? conf.accent : DEFAULTS.accent
-    const mouse = conf["mouse"] !== undefined ? conf["mouse"] === "true" : DEFAULTS.mouse
     const fullscreen = conf["fullscreen"] !== undefined ? conf["fullscreen"] === "true" : DEFAULTS.fullscreen
     const quality = QUALITIES.includes(conf.quality as Quality) ? (conf.quality as Quality) : DEFAULTS.quality
     setSettings({
@@ -89,7 +87,6 @@ export function loadSettings() {
       image_renderer: imageRenderer,
       title_font: titleFont,
       accent,
-      mouse,
       fullscreen,
       quality,
     } as Settings)
@@ -113,7 +110,6 @@ export function saveConf() {
       `image_renderer = ${s.image_renderer}`,
       `title_font = ${s.title_font}`,
       `accent = ${s.accent}`,
-      `mouse = ${s.mouse}`,
       `fullscreen = ${s.fullscreen}`,
       `quality = ${s.quality}`,
     ].join("\n") + "\n",

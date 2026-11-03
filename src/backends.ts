@@ -192,22 +192,24 @@ export async function videoMetaFull(id: string): Promise<VideoMeta> {
 
 async function invidiousMeta(id: string): Promise<VideoMeta | null> {
   const urls = candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/videos/${id}`)
-  try {
-    const j = await Promise.any(
-      urls.map(async (u) => {
-        const res = await fetch(u, { signal: AbortSignal.timeout(4000) })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return (await res.json()) as any
-      }),
-    )
-    return {
-      description: clean(String(j.description ?? j.descriptionHtml ?? "")),
-      date: j.publishedText ?? "",
-      views: String(j.viewCount ?? ""),
-      duration: j.lengthSeconds > 0 ? fmtDuration(j.lengthSeconds) : "",
-    }
-  } catch {
-    return null
+  // race every instance at once; prefer the first one that actually includes a description
+  // (some instances serve date/views with an empty description → previously waited for yt-dlp)
+  const results = await Promise.allSettled(
+    urls.map(async (u) => {
+      const res = await fetch(u, { signal: AbortSignal.timeout(4000) })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return (await res.json()) as any
+    }),
+  )
+  const js = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []))
+  if (js.length === 0) return null
+  const withDesc = js.find((j) => (j.description ?? j.descriptionHtml ?? "").trim().length > 0) ?? js[0]
+  const j = withDesc
+  return {
+    description: clean(String(j.description ?? j.descriptionHtml ?? "")),
+    date: j.publishedText ?? "",
+    views: String(j.viewCount ?? ""),
+    duration: j.lengthSeconds > 0 ? fmtDuration(j.lengthSeconds) : "",
   }
 }
 
