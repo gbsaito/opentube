@@ -196,8 +196,7 @@ export interface VideoMeta {
   duration: string
 }
 
-const EMPTY_META: VideoMeta = { title: "", description: "", date: "", views: "", duration: "" }
-
+export const EMPTY_META: VideoMeta = { title: "", description: "", date: "", views: "", duration: "" }
 const metaCache = new Map<string, VideoMeta>()
 /** meta already fetched this session (no network) */
 export function cachedMeta(id: string): VideoMeta | undefined {

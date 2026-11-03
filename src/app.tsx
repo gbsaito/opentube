@@ -22,7 +22,7 @@ import {
   ACCENT_COLORS,
   QUALITY_ORDER,
 } from "./config"
-import { searchVideos, searchVideosWithFallback, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
+import { searchVideos, searchVideosWithFallback, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, EMPTY_META, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
 import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear, stopPlayback, onPlaybackEnd, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
 import { settle } from "./spawn"
 
@@ -141,9 +141,10 @@ async function updateMeta(v: Video | undefined) {
     if (metaId === id) setSidebarMeta(m) // ignore stale responses
     setOriginalTitle(id, m) // original-language title (search rows may be translated)
   }
-  // no early skip when the row "looks complete": its stored description may be the translated one
-  show(await videoMeta(id))
-  show(await videoMetaFull(id))
+  show(cachedMeta(id) ?? EMPTY_META) // cached rows paint instantly — no flicker between selections
+  // sidebar only ever shows the FULL merged description (invidious ships no descriptions today;
+  // front=true so it never waits out the title-fill queue)
+  show(await videoMetaFull(id, true))
 }
 
 /** swap the translated search-row title for the original-language one (results list + now playing) */
@@ -188,6 +189,9 @@ let descId = ""
 async function loadDesc(id: string) {
   descId = id
   setDescText("")
+  // cached rows paint instantly (the title-fill storm usually warmed them already)
+  const hit = cachedMeta(id)
+  if (hit?.description.trim()) setDescText(hit.description)
   // fast phase: fill only with real text (an invidious blip shouldn't flash "no description")
   void videoMeta(id).then((m) => {
     if (descId === id && m.description.trim()) setDescText(m.description)
