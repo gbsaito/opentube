@@ -7,6 +7,7 @@
 
 
 ## status
+- SIDEBAR KEYED REMOUNT + YANK (user: "still not green" then "y -> yank video url"): CHANGE: sidebar info subtree now keyed on subscriptions signature (subSig) so it remounts when subs change - colors set statically at creation instead of relying on opentui attribute updates (previous probes: fg flips frozen even under bun run with preload; keyed remount is the safe fix). NEW: `y` yanks the focused row's (or playing) youtu.be link to the clipboard via OSC 52 (kitty/wezterm/alacritty/foot, ssh-safe) with a `yanked <url>` toast in the top bar. DELETE: temp src/spanreact.test.tsx.
 - SUBS UX ROUND 6 (user: "subscribed channels names is not green in query view/history"): CHANGE: isSubscribed widened - matches by UCid (both channelId and id) OR row channel display list (v.channel + sidebarMeta().creators) so collab rows "A and B" show green when A (or B) is subscribed; store data itself verified correct. If it STILL shows grey: confirm restart after e109b79.
 - SUBS UX ROUND 5 (user: "move the description to below subscriber count for channels"): CHANGE: ChannelInfo order now name -> Subscribers -> description -> Channel Views -> Joined.
 - SUBS UX ROUND 4 (user: "make the channel name green in video info if subscribed"): CHANGE: isSubscribed() matches subscription rows by UCid (new rows id/channelId) or display title (legacy); sidebar Channel value paints #3fb950 when subscribed, normal fg otherwise.
