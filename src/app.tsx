@@ -157,33 +157,44 @@ function setOriginalTitle(id: string, m: VideoMeta) {
 }
 
 // background pass: original titles only exist on the per-video watch page (search rows ship translated
-// ones), so walk the results serially in the back — visible page first, the rest after
+// ones) — fan out over all rows under the shared spawn limiter, visible page first for quick ordering
 let titleFillSeq = 0
 const originalTitleDone = new Set<string>()
 async function fillOriginalTitles(body: Video[], visibleIds: string[]) {
   const seq = ++titleFillSeq
   const vis = new Set(visibleIds)
   const list = [...body.filter((v) => vis.has(v.id)), ...body.filter((v) => !vis.has(v.id))]
-  for (const v of list) {
-    if (seq !== titleFillSeq) return
-    if (originalTitleDone.has(v.id)) continue
-    try {
-      const m = await limit(() => videoMetaFull(v.id))
-      if (seq !== titleFillSeq) return
-      if (m.title) {
-        originalTitleDone.add(v.id)
-        setOriginalTitle(v.id, m)
-      }
-    } catch {}
-  }
+  await Promise.allSettled(
+    list.map((v) =>
+      limit(() => videoMetaFull(v.id))
+        .then((m) => {
+          if (seq === titleFillSeq && m.title) {
+            originalTitleDone.add(v.id)
+            setOriginalTitle(v.id, m)
+          }
+        })
+        .catch(() => {}),
+    ),
+  )
 }
 
 // description modal (d on a list row): full text, links clickable
 const [descFrom, setDescFrom] = createSignal<Screen | null>(null)
 const [descText, setDescText] = createSignal("")
+let descId = ""
+/** fast snapshot first (invidious ~1-2s), then the yt-dlp phase replaces it when it lands */
 async function loadDesc(id: string) {
-  const m = await videoMetaFull(id)
-  setDescText(m.description.trim() || "(no description)")
+  descId = id
+  setDescText("")
+  // fast phase: fill only with real text (an invidious blip shouldn't flash "no description")
+  void videoMeta(id).then((m) => {
+    if (descId === id && m.description.trim()) setDescText(m.description)
+  }).catch(() => {})
+  // full phase: final word, even when it is truly empty
+  if (descId === id) {
+    const m = await videoMetaFull(id)
+    if (descId === id) setDescText(m.description.trim() || "(no description)")
+  }
 }
 
 // sidebar thumbnail
@@ -402,8 +413,10 @@ async function ensurePageLoaded() {
   try {
     const more = await searchMoreVideos(query(), before, target)
     const seen = new Set(videos().map((v) => v.id))
-    setVideos([...videos(), ...more.filter((v) => v.id && !seen.has(v.id))])
+    const fresh = more.filter((v) => v.id && !seen.has(v.id))
+    setVideos([...videos(), ...fresh])
     if (videos().length < target) setExhausted(true)
+    void fillOriginalTitles(fresh, []) // continuation rows need their original titles too
   } catch {
     setExhausted(true) // continuation failure: no more pages, keep current rows
   } finally {
@@ -1153,14 +1166,14 @@ const Sidebar: Component = () => {
               </text>
               <Show when={v()?.description || sidebarMeta()?.description}>
                 {() => {
-                  // respect original line breaks / spaces: split on newlines, trim, per-line truncate
+                  // sidebar gets a snippet only: first lines, short cap (full text lives in the d-modal)
                   const desc = sidebarMeta()?.description || v()?.description || ""
                   const shown = desc
                     .split(/\r\n|\r|\n/)
                     .map((l) => l.trim())
                     .filter((l) => l.length > 0)
-                    .slice(0, 20)
-                    .map((l) => l.slice(0, 200))
+                    .slice(0, 6)
+                    .map((l) => l.slice(0, 110))
                     .join("\n")
                   return <text fg={theme.faint}>{shown}</text>
                 }}

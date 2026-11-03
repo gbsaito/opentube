@@ -1,5 +1,5 @@
 // tiny concurrency limiter so scroll bursts can't spawn dozens of yt-dlp processes
-const MAX = 2
+const MAX = 4
 let running = 0
 const queue: Array<() => void> = []
 
