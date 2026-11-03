@@ -21,7 +21,7 @@ import {
   QUALITY_ORDER,
 } from "./config"
 import { searchVideos, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
-import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear, stopPlayback, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
+import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear, stopPlayback, onPlaybackEnd, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
 import { settle } from "./spawn"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
@@ -317,6 +317,14 @@ function playCurrent(mode: "video" | "audio") {
   setScreen("nowplaying")
 }
 
+// active mpv exited on its own (ended / killed externally): don't sit on a frozen now-playing screen
+onPlaybackEnd(() => {
+  if (screen() === "nowplaying") {
+    setScreen("results")
+    setInputMode(false)
+  }
+})
+
 function subscribeCurrent() {
   const v = currentVideo()
   if (!v?.channel) return
@@ -477,6 +485,7 @@ export const App: Component = () => {
       case "/":
         // edit the current query inline in the top bar (no home round-trip)
         if (screen() === "results") {
+          e.preventDefault() // stop the opening keypress landing inside the just-focused input as text
           setEditBuf(query())
           setEditing("query")
           return
