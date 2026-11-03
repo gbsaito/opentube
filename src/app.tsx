@@ -694,8 +694,7 @@ const ListRow: Component<{ v: Video; selected: boolean; local: number }> = (prop
       id={`row-${props.v.id}`}
       height={1}
       backgroundColor={props.selected ? `#${settings().accent.slice(1)}4d` : undefined}
-      onMouseOver={() => hoverSelect(props.local, props.v)}
-      onMouseMove={() => hoverSelect(props.local, props.v)}
+      onMouseDrag={(e: any) => hoverSelect(props.local, props.v)} // drag = moved-cursor selection (hover was too trigger-happy)
       onMouseDown={(e: any) => {
         if (e.button === 0) rowMouseDown(props.local, props.v)
       }}
