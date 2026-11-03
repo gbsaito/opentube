@@ -167,9 +167,11 @@ async function invidiousUrls(id: string, mode: "video" | "audio"): Promise<Media
   const aud = af
     .filter((f) => String(f.type ?? "").startsWith("audio"))
     .sort((a, b) => Number(b.language_preference ?? -1) - Number(a.language_preference ?? -1) || (b.bitrate ?? 0) - (a.bitrate ?? 0))
-  // prefer the video's original-language audio track when the instance ships one (dub vs original split)
+  // prefer the video's original-language audio track when the instance ships one (dub vs original split);
+  // compare primary language subtags so "en-US" matches a track labeled "en"
+  const p = (s: any) => String(s ?? "").toLowerCase().split(/[-_]/)[0]!
   const orig = String(j.original_language ?? j.language ?? "").trim().toLowerCase()
-  const audio = orig ? aud.find((f) => String(f.language ?? "").toLowerCase() === orig) ?? aud[0] : aud[0]
+  const audio = orig ? aud.find((f) => p(f.language) === p(orig)) ?? aud[0] : aud[0]
   if (mode === "audio") return audio ? { audioUrl: audio.url, videoUrl: undefined } : {}
   let vid = af.filter((f) => String(f.type ?? "").startsWith("video"))
   if (vid.length === 0) return {}
