@@ -7,6 +7,7 @@
 
 
 ## status
+- SCROLLBARS: user: "still not fixed: there are still scrollbar in the full desc". CHANGE (5000c42): all scrollboxes (results list, store/history, desc modal) pass scrollbarOptions={{visible:false}} — native scroll state still drives scrolling, no visible scrollbar UI.
 - HISTORY-BACK (user: open video/audio from history -> esc -> back to empty-query results instead of history): added playFrom signal set in playCurrent to the screen the video was opened from; now-playing esc + mpv-end now return there (results keeps lastSearch query restore).
 - DESC REVERT (user: "forget the line breaks -> return to original description"): display edits (sidebar + modal) reverted to original line-break handling (6-line snippet caps + blank-line-aware modal lines). Audio still pending: yt-dlp still returning an Italian (dub) audio stream — not original.
 - DESC FINAL SEMANTICS (user: "line breaks must exist if there are, but there musn't be more than 1 blank space between paragraphs"): sidebar + modal KEEP line breaks, delete empty/blank lines between content (max one break between paragraphs). Final (805b66a).
