@@ -233,10 +233,11 @@ function prewarmSearch(q: string) {
 }
 
 let typeaheadTimer: ReturnType<typeof setTimeout> | null = null
-/** debounced typeahead: ~400ms after the query settles, fetch rows before enter is even pressed */
+/** debounced typeahead: ~400ms after the query settles, fetch rows before enter is even pressed.
+ *  reads whichever buffer is live: the home searchbox or the top-bar query editor */
 function scheduleTypeahead() {
   if (typeaheadTimer) clearTimeout(typeaheadTimer)
-  const q = query()
+  const q = editing() === "query" ? editBuf() : query()
   if (q.trim().length < 3) return
   typeaheadTimer = setTimeout(() => {
     typeaheadTimer = null
@@ -629,7 +630,10 @@ const Chrome: Component<{ title: string }> = (props) => (
           focusedTextColor={theme.fg}
           backgroundColor={theme.inputBg}
           focusedBackgroundColor={theme.inputBg}
-          onInput={(value: string) => setEditBuf(value)}
+          onInput={(value: string) => {
+            setEditBuf(value)
+            scheduleTypeahead() // fetch the edited query while it's being typed, same as the home searchbox
+          }}
           onKeyDown={(e: any) => {
             if (e.name === "escape" || e.name === "down") setEditing(null) // cancel, keep the old query
           }}
