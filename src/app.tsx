@@ -99,6 +99,13 @@ function commitEdit() {
   setEditing(null)
 }
 
+/** submit the top-bar query edit ("/") — re-searches without leaving the results screen */
+function submitQuery() {
+  setEditing(null)
+  const q = editBuf().trim()
+  if (q) void doSearch(q)
+}
+
 // lazy per-selection metadata fill: invidious rows lack description, yt-dlp flat rows lack views;
 // two phases so the sidebar fills fast (invidious ~1s) and completes (yt-dlp dump) right after
 const [sidebarMeta, setSidebarMeta] = createSignal<VideoMeta | null>(null)
@@ -361,6 +368,12 @@ export const App: Component = () => {
 
     // instance/count editing swallows all keys first
     if (editing()) {
+      // top-bar query edit: the focused input owns typing; here we only submit
+      if (editing() === "query") {
+        const name = e.name === "kpenter" || e.name === "enter" || e.name === "linefeed" ? "return" : e.name
+        if (name === "return") return void submitQuery()
+        return // typing + escape go to the input (input onKeyDown cancels)
+      }
       if (e.name === "return") return commitEdit()
       if (e.name === "escape") return setEditing(null)
       const cp = e.sequence?.length === 1 ? e.sequence.charCodeAt(0) : 0
@@ -462,10 +475,10 @@ export const App: Component = () => {
         setInputMode(false) // esc focuses the quick access menu; / returns focus to the searchbox
         return
       case "/":
-        // edit the current query: home (searchbox focused) with the query intact
+        // edit the current query inline in the top bar (no home round-trip)
         if (screen() === "results") {
-          setScreen("home")
-          setInputMode(true)
+          setEditBuf(query())
+          setEditing("query")
           return
         }
         return
@@ -543,21 +556,41 @@ const NonHomeScreens: Component = () => (
     <Chrome title={screen() === "results" ? `search › ${query()}` : screen() === "nowplaying" ? `now playing › ${npVideo?.title ?? ""}` : (screen() as string)} />
     {screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" || screen() === "playlists" ? <StoreScreen /> : screen() === "nowplaying" ? <NowPlaying /> : <box flexGrow={1} />}
     <box height={1} paddingLeft={2} backgroundColor={theme.bg}>
-      <text fg={theme.faint}>{screen() === "results" ? `${HINTS} · / edit` : screen() === "nowplaying" ? `${HINTS} · r loop · m mute` : HINTS}</text>
+      <text fg={theme.faint}>{screen() === "results" ? `${HINTS} · / edit query` : screen() === "nowplaying" ? `${HINTS} · r loop · m mute` : HINTS}</text>
     </box>
   </box>
 )
 
 const Chrome: Component<{ title: string }> = (props) => (
   <box height={1} paddingLeft={2} backgroundColor={theme.bg}>
-    <text>
-      <Span fg={settings().accent}>opentube</Span>
-      <Span fg={theme.faint}> › </Span>
-      <Span fg={theme.muted}>{props.title}</Span>
-      <Show when={pageCount() > 1}>
-        {() => <Span fg={theme.faint}> · page {page() + 1}/{pageCount()}{exhausted() ? "" : "+"}</Span>}
-      </Show>
-    </text>
+    {/* top-bar query edit ("/" on results): input in place of the title */}
+    <Show when={screen() === "results" && editing() === "query"} fallback={
+      <text>
+        <Span fg={settings().accent}>opentube</Span>
+        <Span fg={theme.faint}> › </Span>
+        <Span fg={theme.muted}>{props.title}</Span>
+        <Show when={pageCount() > 1}>
+          {() => <Span fg={theme.faint}> · page {page() + 1}/{pageCount()}{exhausted() ? "" : "+"}</Span>}
+        </Show>
+      </text>
+    }>
+      <box flexDirection="row" height={1}>
+        <text fg={theme.muted}>opentube › search › </text>
+        <input
+          flexGrow={1}
+          value={editBuf()}
+          focused
+          textColor={theme.fg}
+          focusedTextColor={theme.fg}
+          backgroundColor={theme.inputBg}
+          focusedBackgroundColor={theme.inputBg}
+          onInput={(value: string) => setEditBuf(value)}
+          onKeyDown={(e: any) => {
+            if (e.name === "escape" || e.name === "down") setEditing(null) // cancel, keep the old query
+          }}
+        />
+      </box>
+    </Show>
   </box>
 )
 
