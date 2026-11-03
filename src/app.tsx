@@ -43,8 +43,8 @@ const QUICK_ICON: Record<string, string> = {
 }
 const QUICK_LABEL: Record<string, string> = {
   history: "History",
-  playlists: "Playlists (wip)",
-  subscriptions: "Subscriptions (wip)",
+  playlists: "Playlists (WIP)",
+  subscriptions: "Subscriptions (WIP)",
   settings: "Settings",
   quit: "Quit",
 }
