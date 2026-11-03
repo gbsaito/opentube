@@ -363,6 +363,9 @@ async function doSearch(q: string) {
     searchCache.set(q, { at: Date.now(), rows })
     setVideos(await rows)
     void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
+    // new search: drop the previous video's thumbnail until the first row lands
+    setThumb(null)
+    thumbUrl = ""
     // background: replace translated search titles with original-language ones (visible page first)
     const body = videos()
     const size = pageSize()
