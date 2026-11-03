@@ -46,6 +46,11 @@ export function seekTo(sec: number) {
 export function stopPlayback() {
   stopCurrent()
 }
+let playbackEndCb: (() => void) | null = null
+/** UI hook: fires once when the active mpv exits on its own (ended/killed) */
+export function onPlaybackEnd(cb: () => void) {
+  playbackEndCb = cb
+}
 function sendCommand(cmd: unknown[]) {
   if (!conn) return
   try {
@@ -262,12 +267,14 @@ async function doPlay(v: Video, mode: "video" | "audio") {
     args.push(`--ytdl-format=${ytdlFormat(mode)}`, "--ytdl=yes")
     mediaUrl = url(v)
   }
-  current = Bun.spawn(["mpv", ...base, ...args, mediaUrl], {
+  const proc = Bun.spawn(["mpv", ...base, ...args, mediaUrl], {
     stdout: "ignore",
     stderr: "ignore",
   })
-  current.unref()
-  current.exited.then(() => {
+  proc.unref()
+  current = proc
+  proc.exited.then(() => {
+    if (current !== proc) return // superseded by a newer playback; its own exit handles teardown
     current = null
     try {
       conn?.close()
@@ -275,6 +282,7 @@ async function doPlay(v: Video, mode: "video" | "audio") {
     conn = null
     if (poller) clearInterval(poller)
     poller = null
+    playbackEndCb?.() // UI returns from now-playing when playback really ends
   })
   firstPlayAt = Date.now()
   poller = setInterval(() => void poll(), 500)
