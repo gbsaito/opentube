@@ -116,15 +116,15 @@ const BACKENDS: Record<BackendKey, (query: string) => Promise<Video[]>> = {
   invidious: viaInvidious,
 }
 
-/** raw /api/v1/videos JSON for the player's fast URL resolver; races all instances, first success wins */
-export function invidiousVideoRaw(id: string): Promise<any | null> {
+/** raw /api/v1/videos JSON; races all instances, first success wins */
+function invidiousVideoRaw(id: string): Promise<any | null> {
   const urls = candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/videos/${id}`)
   return new Promise((resolve, reject) => {
     let pending = urls.length
     let lastErr: unknown
     for (const u of urls) {
       fetch(u, { signal: AbortSignal.timeout(4000), headers: { "User-Agent": "Mozilla/5.0" } })
-        .then(async (res) => {
+        .then(async (res: Response) => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
           resolve(await res.json())
         })
@@ -134,6 +134,22 @@ export function invidiousVideoRaw(id: string): Promise<any | null> {
         })
     }
   })
+}
+
+// ponytail: memoized raced fetch with a 120s TTL — one network hit shared by meta + URL resolver
+const RAW_TTL = 120_000
+const rawCache = new Map<string, { at: number; j: Promise<any> }>()
+/** memoized per id: the meta phases and the player's URL resolver share ONE raced fetch */
+export function invidiousVideoJson(id: string): Promise<any | null> {
+  const hit = rawCache.get(id)
+  if (hit && Date.now() - hit.at < RAW_TTL) return hit.j
+  const j = invidiousVideoRaw(id).catch(() => null) // consumers treat failures as "no data", never reject
+  rawCache.set(id, { at: Date.now(), j })
+  if (rawCache.size > 64) {
+    const first = rawCache.keys().next().value
+    if (first) rawCache.delete(first)
+  }
+  return j
 }
 
 export function searchVideos(query: string): Promise<Video[]> {
@@ -181,29 +197,33 @@ function mergeMeta(iv: VideoMeta | null, yt: VideoMeta | null): VideoMeta {
   }
 }
 
-// one fetch task per id: fast phase = first source with any field, slow phase = both merged
+// one fetch task per id: fast phase = invidious snapshot (~1s), slow phase = yt-dlp
+// ONLY when invidious left a field empty (saves a ~2-8s CPU spawn per selection)
 type MetaTask = { fast: Promise<VideoMeta>; full: Promise<VideoMeta> }
 let inflight: { id: string; task: MetaTask } | null = null
 
+const isFull = (m: VideoMeta) => !!(m.description && m.date && m.views && m.duration)
+
 function metaTask(id: string): MetaTask {
   const ivP = invidiousMeta(id)
-  const ytP = ytdlpMeta(id)
-  const hasAny = (p: Promise<VideoMeta | null>) =>
-    p.then((m) => (m && (m.description || m.date || m.views || m.duration) ? m : Promise.reject(new Error("empty"))))
-  const fast = Promise.any([hasAny(ivP), hasAny(ytP)])
-    .catch(() => null)
-    .then((m) => {
-      const meta = m ?? EMPTY_META
+  const fast = ivP
+    .then((m) => m ?? EMPTY_META)
+    .then((meta) => {
       putCache(id, meta)
       return meta
     })
-  // slow phase: wait for both, merge every non-empty field, refresh the cache
-  const full = Promise.all([ivP.catch(() => null), ytP.catch(() => null)])
-    .then(([iv, yt]) => {
-      const meta = mergeMeta(iv, yt)
+  // slow phase: merge in the yt-dlp source only for the fields invidious lacks
+  const full = ivP.then(async (iv) => {
+    let meta = mergeMeta(iv, null)
+    if (isFull(meta)) {
       putCache(id, meta)
       return meta
-    })
+    }
+    const yt = await ytdlpMeta(id).catch(() => null)
+    meta = mergeMeta(iv, yt)
+    putCache(id, meta)
+    return meta
+  })
   return { fast, full }
 }
 
@@ -225,26 +245,7 @@ export async function videoMetaFull(id: string): Promise<VideoMeta> {
 }
 
 async function invidiousMeta(id: string): Promise<VideoMeta | null> {
-  const urls = candidate(INVIDIOUS, settings().invidious_instance).map((i) => `${i}/api/v1/videos/${id}`)
-  // resolve as soon as an instance with a non-empty description answers; otherwise
-  // fall back to the first success once every instance settled (many have blank desc)
-  const j: any = await new Promise((resolve) => {
-    let pending = urls.length
-    let first: any = null
-    for (const u of urls) {
-      fetch(u, { signal: AbortSignal.timeout(4000), headers: { "User-Agent": "Mozilla/5.0" } })
-        .then(async (res: Response) => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`)
-          const js: any = await res.json()
-          if ((js.description ?? js.descriptionHtml ?? "").trim().length > 0) resolve(js)
-          else if (!first) first = js
-        })
-        .catch(() => {})
-        .finally(() => {
-          if (--pending === 0) resolve(first)
-        })
-    }
-  })
+  const j = await invidiousVideoJson(id)
   if (!j) return null
   return {
     description: clean(String(j.description ?? j.descriptionHtml ?? "")),
@@ -259,7 +260,8 @@ async function ytdlpMeta(id: string): Promise<VideoMeta> {
     return await limit(() =>
       (async () => {
         const proc = Bun.spawn(
-          ["yt-dlp", "--no-warnings", "--socket-timeout", "5", "--dump-json", `https://www.youtube.com/watch?v=${id}`],
+          // player_client bypasses the YouTube bot-check that blocks default clients today
+      ["yt-dlp", "--no-warnings", "--socket-timeout", "5", "--extractor-args", "youtube:player_client=mweb,tv", "--dump-json", `https://www.youtube.com/watch?v=${id}`],
           { stdout: "pipe", stderr: "ignore" },
         )
         const text = await new Response(proc.stdout).text()

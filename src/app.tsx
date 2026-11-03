@@ -212,6 +212,35 @@ async function quitApp() {
 }
 
 let lastSearch = { q: "", at: 0 }
+
+// session search cache: repeat/edited-return queries resolve instantly, typeahead prewarms the promise
+const SEARCH_TTL = 10 * 60_000 // ponytail: stale rows are fine for browsing repeat searches; drop to 60s if results feel old
+const searchCache = new Map<string, { at: number; rows: Promise<Video[]> }>()
+/** prewarm a search in the background (typeahead); doSearch finds it already resolved */
+function prewarmSearch(q: string) {
+  const key = q.trim()
+  if (key.length < 3) return
+  const hit = searchCache.get(key)
+  if (hit && Date.now() - hit.at < SEARCH_TTL) return
+  searchCache.set(key, { at: Date.now(), rows: searchVideosWithFallback(key) })
+  if (searchCache.size > 12) {
+    const first = searchCache.keys().next().value
+    if (first) searchCache.delete(first)
+  }
+}
+
+let typeaheadTimer: ReturnType<typeof setTimeout> | null = null
+/** debounced typeahead: ~400ms after the query settles, fetch rows before enter is even pressed */
+function scheduleTypeahead() {
+  if (typeaheadTimer) clearTimeout(typeaheadTimer)
+  const q = query()
+  if (q.trim().length < 3) return
+  typeaheadTimer = setTimeout(() => {
+    typeaheadTimer = null
+    prewarmSearch(q)
+  }, 400)
+}
+
 async function doSearch(q: string) {
   if (!q.trim()) return
   if (q === lastSearch.q && Date.now() - lastSearch.at < 400) return // double delivery (input submit + global keyhook)
@@ -225,8 +254,10 @@ async function doSearch(q: string) {
   setSel(0)
   setVideos([]) // drop stale rows from previous searches immediately
   try {
-    setVideos(await searchVideosWithFallback(q))
-    void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
+    const cached = searchCache.get(q)
+    const rows = cached && Date.now() - cached.at < SEARCH_TTL ? cached.rows : searchVideosWithFallback(q)
+    searchCache.set(q, { at: Date.now(), rows })
+    setVideos(await rows)
     void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
   } catch (e) {
     setVideos([])
@@ -687,7 +718,10 @@ function Home() {
           focusedTextColor={theme.fg}
           backgroundColor={theme.inputBg}
           focusedBackgroundColor={theme.inputBg}
-          onInput={(value: string) => setQuery(value)}
+          onInput={(value: string) => {
+            setQuery(value)
+            scheduleTypeahead() // rows start fetching before enter is pressed
+          }}
           onKeyDown={(e: any) => {
             if (e.name === "escape" || e.name === "down") setInputMode(false)
           }}

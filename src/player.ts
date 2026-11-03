@@ -1,7 +1,7 @@
 import type { Video, Settings } from "./config"
 import { settings } from "./config"
 import { limit } from "./spawn"
-import { invidiousVideoRaw } from "./backends"
+import { invidiousVideoJson } from "./backends"
 import { createSignal } from "solid-js"
 
 const url = (v: Video) => `https://youtube.com/watch?v=${v.id}`
@@ -157,9 +157,10 @@ function qualityCap(q: string): number {
   return ({ "480p": 480, "720p": 720, "1080p": 1080, "2160p": 2160 } as Record<string, number>)[q] ?? 0
 }
 
-/** fast path: invidious serves direct googlevideo URLs in ~2s (yt-dlp resolve takes ~7s) */
+/** fast path: invidious serves direct googlevideo URLs in ~2s (yt-dlp resolve takes ~7s); shares
+ *  the memoized raced fetch with the meta pipeline, so selecting a row pays for it exactly once */
 async function invidiousUrls(id: string, mode: "video" | "audio"): Promise<MediaUrls> {
-  const j = await invidiousVideoRaw(id)
+  const j = await invidiousVideoJson(id)
   if (!j) return {}
   const af: any[] = (j.adaptiveFormats ?? []).filter((f: any) => f?.url)
   const res = (f: any) => parseInt(String(f.resolution ?? ""), 10) || 0
@@ -186,7 +187,8 @@ async function invidiousUrls(id: string, mode: "video" | "audio"): Promise<Media
 async function ytdlpUrls(id: string, mode: "video" | "audio"): Promise<MediaUrls> {
   try {
     const fmt = ytdlFormat(mode)
-    const proc = Bun.spawn(["yt-dlp", "--no-warnings", "--socket-timeout", "5", "-f", fmt, "--print", "urls", `https://youtube.com/watch?v=${id}`], {
+    // player_client bypasses the YouTube bot-check that blocks default clients today
+    const proc = Bun.spawn(["yt-dlp", "--no-warnings", "--socket-timeout", "5", "--extractor-args", "youtube:player_client=mweb,tv", "-f", fmt, "--print", "urls", `https://youtube.com/watch?v=${id}`], {
       stdout: "pipe",
       stderr: "ignore",
     })
