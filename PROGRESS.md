@@ -7,6 +7,7 @@
 
 
 ## status
+- DESC FINAL SEMANTICS (user: "line breaks must exist if there are, but there musn't be more than 1 blank space between paragraphs"): sidebar + modal KEEP line breaks, delete empty/blank lines between content (max one break between paragraphs). Final (805b66a).
 - DESC ONE-LINE FINAL (user: "max of 2 line breaks instead of 1; no collapse to single line, meant when >1 blank space between paragraphs delete them"): behavior final (7e3062c): descriptions keep <=2 line breaks; >2 breaks collapse to single line. Sidebar + modal both honor this.
 - AUDIO-DUB (user: "autodubb issue is in yt-dlp -> invidious chooses the right language (default)"): CHANGE (d8ec9a4): playback-side yt-dlp URL resolve switched from mweb,tv to android (`youtube:player_client=android`) — the autodubbed-stream path. Meta-side already on android (+mweb,tv fallback). VERIFY: play a video, hear original audio.
 - DESC FETCH HALVED: ANDROID CLIENT (5105725, user: "still up to 5s"): measured player clients against watch-page fetch — android ~2-2.6s with complete descriptions on every probe id; mweb ~4-5s; tv/ios blocked (bot-check / format error). ytdlpMeta now spawns android first and falls back to the old mweb,tv combo only if android comes back blocked/empty. Cold full-meta measured 2.1s (was ~4-5s client, ~15-20s under storm pre-ae27e84). No short-description path remains: sidebar renders ONLY sidebarMeta?.description (flat-search row snippets can never surface).
