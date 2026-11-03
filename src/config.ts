@@ -15,7 +15,8 @@ export interface Video {
 }
 
 // --- settings (.conf) -------------------------------------------------------
-export type Quality = "auto" | "best" | "lowest" | "480p" | "720p" | "1080p" | "2160p" | "audio"
+export type Quality = "auto" | "best" | "lowest" | "480p" | "720p" | "1080p" | "2160p"
+
 // YT-USER: mouse is always on; the old on/off toggle is gone (kitty maps wheel→arrows natively when off)
 export interface Settings {
   backend: "yt-dlp" | "invidious"
@@ -30,7 +31,7 @@ export interface Settings {
   quality: Quality
 }
 
-const QUALITIES: readonly Quality[] = ["auto", "best", "lowest", "480p", "720p", "1080p", "2160p", "audio"]
+const QUALITIES: readonly Quality[] = ["auto", "best", "lowest", "480p", "720p", "1080p", "2160p"]
 export const QUALITY_ORDER = QUALITIES
 
 const DEFAULTS: Settings = {
