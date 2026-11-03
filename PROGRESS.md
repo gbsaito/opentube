@@ -7,6 +7,7 @@
 
 
 ## status
+- AUDIO STILL ITALIAN (user: "q still italian"): CHANGE (687f7eb): invidious audio pick now prefers the video's original-language track (j.original_language/j.language match on language) after the language_preference sort; doPlay now drops stale session urlCache resolves per play (backend/pick fixes don't invalidate cache). Verify by playing.
 - SCROLLBARS: user: "still not fixed: there are still scrollbar in the full desc". CHANGE (5000c42): all scrollboxes (results list, store/history, desc modal) pass scrollbarOptions={{visible:false}} — native scroll state still drives scrolling, no visible scrollbar UI.
 - HISTORY-BACK (user: open video/audio from history -> esc -> back to empty-query results instead of history): added playFrom signal set in playCurrent to the screen the video was opened from; now-playing esc + mpv-end now return there (results keeps lastSearch query restore).
 - DESC REVERT (user: "forget the line breaks -> return to original description"): display edits (sidebar + modal) reverted to original line-break handling (6-line snippet caps + blank-line-aware modal lines). Audio still pending: yt-dlp still returning an Italian (dub) audio stream — not original.
