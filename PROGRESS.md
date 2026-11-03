@@ -7,6 +7,7 @@
 
 
 ## status
+- AUDIO-DUB / PROGRESS-BAR STATUS (user batch): audio "original language" fix NOT yet landed (client swaps done — android for ~2s; original-audio selection/mpv `--alang` pending); progress bar EXISTS (NowPlaying bar() with █/░ + npTime via 500ms mpv poller) — confirm it's live/stuck.
 - DESC FETCH HALVED: ANDROID CLIENT (5105725, user: "still up to 5s"): measured player clients against watch-page fetch — android ~2-2.6s with complete descriptions on every probe id; mweb ~4-5s; tv/ios blocked (bot-check / format error). ytdlpMeta now spawns android first and falls back to the old mweb,tv combo only if android comes back blocked/empty. Cold full-meta measured 2.1s (was ~4-5s client, ~15-20s under storm pre-ae27e84). No short-description path remains: sidebar renders ONLY sidebarMeta?.description (flat-search row snippets can never surface).
 - DESC ONE-LINE COLLAPSE (user: "if a description has more than 1 line break convert it to one", Mewing 2.0 example): sidebar snippet + d-modal now collapse all line breaks into ONE line (split → trim → filter → join " ") before display; modal then folds for terminal width via descPieces.
 - THUMB STICKY FIX: new searches now clear the thumbnail (setThumb(null); thumbUrl="") at search start, so the last-selected video's image can't sit stuck until the first row lands.
