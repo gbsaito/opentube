@@ -85,7 +85,7 @@ function fmtDuration(chs: number): string {
 }
 
 async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0" } })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (await res.json()) as T
 }
@@ -138,6 +138,17 @@ export function invidiousVideoRaw(id: string): Promise<any | null> {
 
 export function searchVideos(query: string): Promise<Video[]> {
   return BACKENDS[settings().backend](query)
+}
+
+/** primary backend failed entirely (all instances down / no instance reachable): fall through to the other backend */
+export async function searchVideosWithFallback(query: string): Promise<Video[]> {
+  try {
+    return await searchVideos(query)
+  } catch (e) {
+    const other: BackendKey = settings().backend === "invidious" ? "yt-dlp" : "invidious"
+    void e // first failure noted; the fallback's own error (if any) is what the user sees
+    return await BACKENDS[other](query)
+  }
 }
 
 // ponytail: ceiling is one request per selected video; upgrade to prefetch of neighbors when scroll feels sluggish

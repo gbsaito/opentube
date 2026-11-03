@@ -20,7 +20,7 @@ import {
   ACCENT_COLORS,
   QUALITY_ORDER,
 } from "./config"
-import { searchVideos, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
+import { searchVideos, searchVideosWithFallback, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, ERR_MSG, type BackendKey, type VideoMeta } from "./backends"
 import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear, stopPlayback, onPlaybackEnd, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
 import { settle } from "./spawn"
 
@@ -225,7 +225,7 @@ async function doSearch(q: string) {
   setSel(0)
   setVideos([]) // drop stale rows from previous searches immediately
   try {
-    setVideos(await searchVideos(q))
+    setVideos(await searchVideosWithFallback(q))
     void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
     void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
   } catch (e) {
