@@ -1363,6 +1363,12 @@ function DescScreen() {
   )
 }
 
+/** channel subscribed? (new rows carry the UCid; legacy rows match by display name) */
+function isSubscribed(v: Video | undefined | null): boolean {
+  if (!v?.channel) return false
+  return subscriptions.items.some((s) => s.id === v.channelId || s.title === v.channel || (s.channelId && s.channelId === v.channelId))
+}
+
 /** compact count: 21400000 -> "21.4M" (sub counts, like the about panel) */
 function fmtCount(n: number | undefined): string {
   if (!n || n <= 0) return ""
@@ -1448,7 +1454,7 @@ const Sidebar: Component = () => {
                 <text fg={theme.fg}>{v()?.title ?? ""}</text>
                 <text>
                   <Span fg={theme.muted}>Channel: </Span>
-                  <Span fg={theme.fg}>{v()?.channel}</Span>
+                  <Span fg={isSubscribed(v()) ? "#3fb950" : theme.fg}>{v()?.channel}</Span>
                 </text>
                 <text>
                   <Span fg={theme.muted}>Upload Date: </Span>
