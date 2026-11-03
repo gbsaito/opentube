@@ -997,6 +997,7 @@ function Results() {
         ref={(el: any) => (listScrollRef = el)}
         scrollY
         contentOptions={{ width: "100%" }} // rows never overflow the viewport — horizontal wheel has zero range
+        scrollbarOptions={{ visible: false }} // ponytail: no manual scrollbar UI wanted; native state still drives scrolling
         flexGrow={1}
         border={["right"]}
         borderStyle="single"
@@ -1021,7 +1022,7 @@ function StoreScreen() {
   const items = () => store()?.items ?? []
   return (
     <box flexGrow={1} flexDirection="row">
-      <scrollbox ref={(el: any) => (listScrollRef = el)} scrollY flexGrow={1} border={["right"]} borderStyle="single" borderColor={theme.surfaceBorder}>
+      <scrollbox ref={(el: any) => (listScrollRef = el)} scrollY flexGrow={1} scrollbarOptions={{ visible: false }} border={["right"]} borderStyle="single" borderColor={theme.surfaceBorder}>
         <Show when={items().length === 0}>{() => <ListHint text="nothing here yet" />}
         </Show>
         <For each={visibleList()}>{(v, i) => <ListRow v={v} selected={i() === localFocus()} local={i()} />}</For>
@@ -1122,7 +1123,7 @@ function DescScreen() {
   return (
     <box flexGrow={1} justifyContent="center" alignItems="center" backgroundColor={theme.bg}>
       <box width="90%" height="96%" border={["top", "bottom", "left", "right"]} borderStyle="single" borderColor={settings().accent} backgroundColor={theme.inputBg} paddingTop={1}>
-        <scrollbox scrollY flexGrow={1}>
+        <scrollbox scrollY flexGrow={1} scrollbarOptions={{ visible: false }}>
           <For each={lines()}>{(pieces) => <DescLine pieces={pieces} />}</For>
         </scrollbox>
       </box>
