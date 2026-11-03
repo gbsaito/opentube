@@ -23,6 +23,7 @@ export interface Settings {
   results_count: number
   page_count: number
   prompt_history: boolean
+  history_limit: number
   invidious_instance: string
   previews: boolean // info sidebar
   image_previews: boolean // thumbnail
@@ -41,6 +42,7 @@ const DEFAULTS: Settings = {
   results_count: 25,
   page_count: 2,
   prompt_history: true,
+  history_limit: 50,
   invidious_instance: "https://yt.chocolatemoo53.com",
   previews: true,
   image_previews: true,
@@ -82,6 +84,7 @@ export function loadSettings() {
     const accent = conf.accent && ACCENT_COLORS.includes(conf.accent) ? conf.accent : DEFAULTS.accent
     const fullscreen = conf["fullscreen"] !== undefined ? conf["fullscreen"] === "true" : DEFAULTS.fullscreen
     const quality = QUALITIES.includes(conf.quality as Quality) ? (conf.quality as Quality) : DEFAULTS.quality
+    const historyLimit = Math.min(Math.max(Number(conf["history_limit"] ?? DEFAULTS.history_limit) || DEFAULTS.history_limit, 5), 500)
     setSettings({
       ...DEFAULTS,
       backend,
@@ -89,6 +92,7 @@ export function loadSettings() {
       results_count: Number(conf.results_count ?? DEFAULTS.results_count),
       page_count: Number(conf.page_count ?? DEFAULTS.page_count),
       prompt_history: conf["prompt_history"] !== undefined ? conf["prompt_history"] === "true" : DEFAULTS.prompt_history,
+      history_limit: historyLimit,
       previews,
       image_previews: imagePreviews,
       image_renderer: imageRenderer,
@@ -113,6 +117,7 @@ export function saveConf() {
       `results_count = ${s.results_count}`,
       `page_count = ${s.page_count}`,
       `prompt_history = ${s.prompt_history}`,
+      `history_limit = ${s.history_limit}`,
       `invidious_instance = ${s.invidious_instance}`,
       `previews = ${s.previews}`,
       `image_previews = ${s.image_previews}`,
@@ -133,9 +138,9 @@ function saveStore(name: string, items: Video[]) {
 
 export class Store {
   sig: Signal<Video[]>
+  cap = 500
   constructor(
     readonly name: string,
-    private cap = 500,
   ) {
     const [get, set] = createSignal<Video[]>([])
     this.sig = [get, set]
@@ -163,6 +168,11 @@ export class Store {
     const items = this.items.filter((e) => e.id !== id)
     this.sig[1](items)
     saveStore(this.name, items)
+  }
+  setCap(n: number) {
+    this.cap = n
+    const items = this.items.slice(0, Math.max(0, Math.floor(n)))
+    this.sig[1](items)
   }
 }
 

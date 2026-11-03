@@ -50,8 +50,8 @@ const QUICK_LABEL: Record<string, string> = {
   settings: "Settings",
   quit: "Quit",
 }
-const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "page_count", "prompt_history", "previews", "image_previews", "title_font", "accent", "fullscreen", "quality"]
-const EDITABLE_NUMBERS: readonly string[] = ["results_count", "page_count"]
+const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "page_count", "prompt_history", "history_limit", "previews", "image_previews", "title_font", "accent", "fullscreen", "quality"]
+const EDITABLE_NUMBERS: readonly string[] = ["results_count", "page_count", "history_limit"]
 const INVIDIOUS_INSTANCES: string[] = [
   "https://yt.chocolatemoo53.com",
   "https://inv.nadeko.net",
@@ -108,8 +108,10 @@ function commitEdit() {
   const s = { ...settings() } as any
   if (key === "results_count") s.results_count = Math.min(Math.max(parseInt(editBuf(), 10) || 25, 1), 50)
   else if (key === "page_count") s.page_count = Math.min(Math.max(parseInt(editBuf(), 10) || 2, 1), 20) // ponytail: no-op setting yet; range guessed until wired
+  else if (key === "history_limit") s.history_limit = Math.min(Math.max(parseInt(editBuf(), 10) || 50, 5), 500)
   else s[key] = editBuf()
   setSettings(s)
+  if (key === "history_limit") queries.setCap(s.history_limit)
   saveConf()
   setEditing(null)
 }
@@ -263,7 +265,10 @@ async function doSearch(q: string) {
   if (!q.trim()) return
   if (q === lastSearch.q && Date.now() - lastSearch.at < 400) return // double delivery (input submit + global keyhook)
   lastSearch = { q, at: Date.now() }
-  if (settings().prompt_history) queries.add({ id: q, title: q, channel: "", date: "", description: "" }) // record prompt history
+  if (settings().prompt_history) {
+    queries.setCap(settings().history_limit)
+    queries.add({ id: q, title: q, channel: "", date: "", description: "" }) // record prompt history
+  }
   setQuery(q)
   setScreen("results")
   setPage(0)
