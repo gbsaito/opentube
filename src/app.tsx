@@ -26,8 +26,10 @@ import { searchVideos, searchVideosWithFallback, searchMoreVideos, videoMeta, vi
 import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear, stopPlayback, onPlaybackEnd, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
 import { settle } from "./spawn"
 
-// span styling props are runtime-supported but not in SpanProps typings; cast wrapper
-const Span: Component<any> = (props) => <span {...props} />
+// span styling props are runtime-supported but not in SpanProps typings; cast wrapper.
+// CRITICAL: bind fg/children as prop GETTERS, not an element spread — a plain {...props} spread
+// copies values once at mount (components render once in solid) and dynamic colors freeze
+const Span: Component<any> = (props) => <text fg={props.fg}>{props.children}</text>
 // link mouse events are runtime-supported but not in LinkProps typings; cast wrapper
 const A: Component<any> = (props) => <a {...props} />
 
@@ -1363,6 +1365,10 @@ function DescScreen() {
   )
 }
 
+/** signatures so the sidebar info subtree remounts when subscriptions change — colors are set
+ *  statically at (re)creation, sidestepping opentui attribute-reactivity gaps (green channel names) */
+const subSig = () => subscriptions.items.map((s) => s.channelId || s.title).join("|")
+
 /** channel subscribed? New subs carry the UCid; legacy rows match by display name. Collab rows
  *  display "A and B" while the sub is "A": the row's real channels (sidebarMeta creators) count too */
 function isSubscribed(v: Video | undefined | null): boolean {
@@ -1446,7 +1452,7 @@ const Sidebar: Component = () => {
       </Show>
       <Show when={infoOn()}>
         <box height={1} />
-        <Show when={v()}>
+        <Show keyed when={infoOn() && v() && subSig()}>
           {() =>
             screen() === "subscriptions" && !subChannel() && chanInfo() ? (
               <ChannelInfo v={v()!} info={chanInfo()!} />
