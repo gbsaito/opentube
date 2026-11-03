@@ -271,6 +271,21 @@ async function roundAvatar(url: string): Promise<Uint8Array | null> {
   }
 }
 
+/** subscription rows' sidebar: profile info caps (subs/views/joined/description) — like video meta */
+const [chanInfo, setChanInfo] = createSignal<any | null>(null)
+let chanId = ""
+async function updateChannelInfo(row: Video | undefined) {
+  if (!row) return setChanInfo(null)
+  try {
+    const id = /^UC[\w-]{22}$/.test(row.id) ? row.id : await channelUcid(row.title || row.id) // legacy rows resolve like the avatar
+    if (chanId === id) return
+    chanId = id
+    setChanInfo(await channelProfile(id))
+  } catch {
+    setChanInfo(null)
+  }
+}
+
 /** subscription CHANNEL rows have no video thumbnail: show the channel's circular avatar */
 async function updateChannelAvatar(row: Video | undefined) {
   if (!row) return setThumb(null)
@@ -521,8 +536,10 @@ function refreshSidebar(v: Video | undefined) {
     void updateMeta(row)
   })
   // thumbnails are a ~50ms CDN fetch: straight away, not debounced
-  if (screen() === "subscriptions" && !subChannel()) void updateChannelAvatar(row) // channel rows: circular avatar
-  else void updateThumb(row)
+  if (screen() === "subscriptions" && !subChannel()) {
+    void updateChannelAvatar(row) // channel rows: circular avatar + profile info
+    void updateChannelInfo(row)
+  } else void updateThumb(row)
 }
 let sidebarRow: string | undefined
 const sidebarDeferrer = settle(350, (fn: () => void) => fn())
@@ -553,6 +570,8 @@ onPlaybackEnd(() => {
 // watch page — s asks which one to subscribe instead of storing the display string
 const [subPick, setSubPick] = createSignal<string[] | null>(null)
 const [subPickIdx, setSubPickIdx] = createSignal(0)
+const subPickLen = () => (subPick() ?? []).length
+const subPickSel = () => Math.min(subPickIdx(), subPickLen() - 1)
 
 function parseCollabNames(channel: string): string[] | null {
   const parts = channel.split(" and ").map((s) => s.trim())
@@ -1236,16 +1255,14 @@ const ListHint: Component<{ text: string; color?: string }> = (props) => (
 
 // --- channel picker modal (collab subscribe) ----------------------------------------
 function SubPickBody() {
-  const names = subPick() ?? []
-  const sel = Math.min(subPickIdx(), names.length - 1)
   return (
     <box flexGrow={1} backgroundColor={theme.bg} justifyContent="center" alignItems="center">
       <box width="56%" border={["top", "bottom", "left", "right"]} borderStyle="single" borderColor={settings().accent} backgroundColor={theme.inputBg} paddingTop={1}>
         <text fg={theme.accent} selectable={false}>  subscribe › pick a channel</text>
         <text fg={theme.faint} selectable={false}> </text>
-        <For each={names}>{(name, i) => (
-          <box paddingLeft={2} height={1} backgroundColor={i() === sel ? `#${settings().accent.slice(1)}4d` : undefined}>
-            <text selectable={false} fg={theme.fg}>{i() === sel ? " ▸ " : "   "}{name}</text>
+        <For each={subPick()}>{(name, i) => (
+          <box paddingLeft={2} height={1} backgroundColor={i() === subPickSel() ? `#${settings().accent.slice(1)}4d` : undefined}>
+            <text selectable={false} fg={theme.fg}>{i() === subPickSel() ? " ▸ " : "   "}{name}</text>
           </box>
         )}</For>
         <text fg={theme.faint} selectable={false}> </text>
@@ -1346,6 +1363,50 @@ function DescScreen() {
   )
 }
 
+/** compact count: 21400000 -> "21.4M" (sub counts, like the about panel) */
+function fmtCount(n: number | undefined): string {
+  if (!n || n <= 0) return ""
+  const tiers: Array<[number, string]> = [[1e9, "B"], [1e6, "M"], [1e3, "K"]]
+  for (const [d, s] of tiers) if (n >= d) return `${(n / d).toFixed(1).replace(/\.0$/, "")}${s}`
+  return String(Math.round(n))
+}
+
+/** sidebar block for a subscription channel row: the channel's own about info, not video leftovers */
+const ChannelInfo: Component<{ v: Video; info: any }> = (props) => {
+  const info = () => props.info
+  const joined = () => (info().joined > 0 ? new Date(info().joined * 1000).toISOString().slice(0, 10) : "")
+  return (
+    <>
+      <text fg={theme.fg}>{info().author || props.v.title}</text>
+      <Show when={info().description}>
+        {() => (
+          <text fg={theme.faint}>{String(info().description).split(/\r\n|\r|\n/).filter(Boolean).slice(0, 4).map((l) => l.slice(0, 110)).join("\n")}</text>
+        )}
+      </Show>
+      <text>
+        <Span fg={theme.muted}>Subscribers: </Span>
+        <Span fg={theme.fg}>{fmtCount(info().subCount)}</Span>
+      </text>
+      <Show when={info().totalViews > 0}>
+        {() => (
+          <text>
+            <Span fg={theme.muted}>Channel Views: </Span>
+            <Span fg={theme.fg}>{info().totalViews.toLocaleString("en-US")}</Span>
+          </text>
+        )}
+      </Show>
+      <Show when={joined()}>
+        {() => (
+          <text>
+            <Span fg={theme.muted}>Joined: </Span>
+            <Span fg={theme.fg}>{joined()}</Span>
+          </text>
+        )}
+      </Show>
+    </>
+  )
+}
+
 const Sidebar: Component = () => {
   const v = currentVideo
   const infoOn = () => settings().previews
@@ -1376,41 +1437,47 @@ const Sidebar: Component = () => {
       <Show when={infoOn()}>
         <box height={1} />
         <Show when={v()}>
-          {() => (
-            <>
-              {/* optional-chained: solid may re-run this closure one tick past Show's teardown while v() clears */}
+          {() =>
+            screen() === "subscriptions" && !subChannel() && chanInfo() ? (
+              <ChannelInfo v={v()!} info={chanInfo()!} />
+            ) : screen() === "subscriptions" && !subChannel() ? (
               <text fg={theme.fg}>{v()?.title ?? ""}</text>
-              <text>
-                <Span fg={theme.muted}>Channel: </Span>
-                <Span fg={theme.fg}>{v()?.channel}</Span>
-              </text>
-              <text>
-                <Span fg={theme.muted}>Upload Date: </Span>
-                <Span fg={theme.fg}>{v()?.date || sidebarMeta()?.date || ""}</Span>
-              </text>
-              <text>
-                <Span fg={theme.muted}>Views: </Span>
-                <Span fg={theme.fg}>{fmtViews(v()?.views || sidebarMeta()?.views || "")}</Span>
-              </text>
-              <text>
-                <Span fg={theme.muted}>Duration: </Span>
-                <Span fg={theme.fg}>{v()?.duration || sidebarMeta()?.duration || ""}</Span>
-              </text>
-              <Show when={sidebarMeta()?.description}>
-                {() => {
-                  const desc = sidebarMeta()?.description || ""
-                  const shown = desc
-                    .split(/\r\n|\r|\n/)
-                    .map((l) => l.trim())
-                    .filter((l) => l.length > 0)
-                    .slice(0, 6)
-                    .map((l) => l.slice(0, 110))
-                    .join("\n")
-                  return <text fg={theme.faint}>{shown}</text>
-                }}
-              </Show>
-            </>
-          )}
+            ) : (
+              <>
+                {/* optional-chained: solid may re-run this closure one tick past Show's teardown while v() clears */}
+                <text fg={theme.fg}>{v()?.title ?? ""}</text>
+                <text>
+                  <Span fg={theme.muted}>Channel: </Span>
+                  <Span fg={theme.fg}>{v()?.channel}</Span>
+                </text>
+                <text>
+                  <Span fg={theme.muted}>Upload Date: </Span>
+                  <Span fg={theme.fg}>{v()?.date || sidebarMeta()?.date || ""}</Span>
+                </text>
+                <text>
+                  <Span fg={theme.muted}>Views: </Span>
+                  <Span fg={theme.fg}>{fmtViews(v()?.views || sidebarMeta()?.views || "")}</Span>
+                </text>
+                <text>
+                  <Span fg={theme.muted}>Duration: </Span>
+                  <Span fg={theme.fg}>{v()?.duration || sidebarMeta()?.duration || ""}</Span>
+                </text>
+                <Show when={sidebarMeta()?.description}>
+                  {() => {
+                    const desc = sidebarMeta()?.description || ""
+                    const shown = desc
+                      .split(/\r\n|\r|\n/)
+                      .map((l) => l.trim())
+                      .filter((l) => l.length > 0)
+                      .slice(0, 6)
+                      .map((l) => l.slice(0, 110))
+                      .join("\n")
+                    return <text fg={theme.faint}>{shown}</text>
+                  }}
+                </Show>
+              </>
+            )
+          }
         </Show>
       </Show>
     </box>
