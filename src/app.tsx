@@ -909,7 +909,7 @@ function Home() {
         />
       </box>
       <box height={1} />
-      {!suggestOpen() && (
+      {(!inputMode() || !suggestOpen()) && (
         <>
           <box width="62%" maxWidth={72} alignSelf="center">
             <text fg={theme.faint}>{`tab switch · ↑↓ move · enter open${settings().prompt_history ? " · / history" : ""}`}</text>
@@ -940,7 +940,7 @@ function Home() {
           </box>
         </>
       )}
-      {suggestOpen() && (
+      {suggestOpen() && inputMode() && (
         <box width="62%" maxWidth={72} alignSelf="center" border={["left"]} borderStyle="single" borderColor={theme.muted}>
           <For each={sugList()}>
             {(s, i) => {
@@ -1106,9 +1106,9 @@ const DescLine: Component<{ pieces: Array<{ t: string; url?: string }> }> = (pro
 function DescScreen() {
   const lines = () => {
     const acc: Array<Array<{ t: string; url?: string }>> = []
-    for (const l of descText().split(/\r\n|\r|\n/).map((s) => s.trim())) {
-      if (l === "") acc.push([{ t: "" }])
-      else acc.push(descPieces(l, 92))
+    // descriptions render as ONE line (multi-line -> single line)
+    for (const l of descText().split(/\r\n|\r|\n/).map((s) => s.trim()).filter((s) => s.length > 0)) {
+      acc.push(descPieces(l, 92))
     }
     return acc
   }
@@ -1178,13 +1178,13 @@ const Sidebar: Component = () => {
                   // full metadata only: no short/flat snippet fallback — an empty area until the
                   // full text lands (row descriptions are yt-dlp flat-search fragments, not full)
                   const desc = sidebarMeta()?.description || ""
+                  // one line: more than a single line break -> collapse to a single line
                   const shown = desc
                     .split(/\r\n|\r|\n/)
                     .map((l) => l.trim())
                     .filter((l) => l.length > 0)
-                    .slice(0, 6)
-                    .map((l) => l.slice(0, 110))
-                    .join("\n")
+                    .join(" ")
+                    .slice(0, 68)
                   return <text fg={theme.faint}>{shown}</text>
                 }}
               </Show>
