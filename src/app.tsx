@@ -1363,10 +1363,14 @@ function DescScreen() {
   )
 }
 
-/** channel subscribed? (new rows carry the UCid; legacy rows match by display name) */
+/** channel subscribed? New subs carry the UCid; legacy rows match by display name. Collab rows
+ *  display "A and B" while the sub is "A": the row's real channels (sidebarMeta creators) count too */
 function isSubscribed(v: Video | undefined | null): boolean {
   if (!v?.channel) return false
-  return subscriptions.items.some((s) => s.id === v.channelId || s.title === v.channel || (s.channelId && s.channelId === v.channelId))
+  const rowChannels = [v.channel, ...(sidebarMeta()?.creators ?? [])]
+  return subscriptions.items.some(
+    (s) => (v.channelId !== "" && v.channelId != null && (s.channelId === v.channelId || s.id === v.channelId)) || rowChannels.includes(s.title),
+  )
 }
 
 /** compact count: 21400000 -> "21.4M" (sub counts, like the about panel) */
