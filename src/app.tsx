@@ -175,7 +175,6 @@ const [zoomLevel, setZoomLevel] = createSignal(1)
 // mouse: hovering a row selects it, double-click interacts (plays)
 let lastClick = { id: "", at: 0 }
 function hoverSelect(local: number, v: Video | undefined) {
-  try { if (process.env.APP_DBG) appendFileSync("/tmp/opentube-keys.log", `${Date.now()} [hover] local=${local} id=${v?.id} screen=${screen()}\n`) } catch {}
   if (!v || screen() === "home" || screen() === "settings" || screen() === "nowplaying") return
   const list = visibleList()
   if (local >= list.length) return
@@ -338,7 +337,6 @@ export const App: Component = () => {
   rendererRef = renderer
   // global mouse: scroll navigates, ctrl+scroll zooms
   renderer.root.onMouse = (e) => {
-    try { if (process.env.APP_DBG) appendFileSync("/tmp/opentube-keys.log", `${Date.now()} [rootmouse] type=${e.type} screen=${screen()} useMouse=${(renderer as any)._useMouse}\n`) } catch {}
     if (e.type !== "scroll") return
     const dir = e.scroll?.direction === "up" ? -1 : 1
     if (e.modifiers.ctrl) {

@@ -222,7 +222,6 @@ async function doPlay(v: Video, mode: "video" | "audio") {
     stderr: "ignore",
   })
   current.unref()
-  try { if (process.env.APP_DBG) appendFileSync("/tmp/opentube-keys.log", `${Date.now()} [doPlay] args=${JSON.stringify([...base, ...args, mediaUrl]).slice(0, 400)}\n`) } catch {}
   current.exited.then(() => {
     current = null
     try {
