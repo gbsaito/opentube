@@ -43,8 +43,8 @@ const QUICK_ICON: Record<string, string> = {
 }
 const QUICK_LABEL: Record<string, string> = {
   history: "History",
-  playlists: "Playlists",
-  subscriptions: "Subscriptions",
+  playlists: "Playlists (wip)",
+  subscriptions: "Subscriptions (wip)",
   settings: "Settings",
   quit: "Quit",
 }
@@ -63,7 +63,7 @@ const INVIDIOUS_INSTANCES: string[] = [
 ]
 const BACKEND_ORDER: BackendKey[] = ["yt-dlp", "invidious"]
 const RENDERER_LIST: readonly Settings["image_renderer"][] = ["auto", "icat", "sixel", "chafa"]
-const HINTS = "↑↓/jk move · ←→ page · enter play · p play · P audio · s subscribe · l add playlist · d delete · q quit · esc back"
+const HINTS = "↑↓/jk move · ←→ page · enter play · p play · P audio · s subscribe · d delete · q quit · esc back"
 
 // --- app state -----------------------------------------------------------------
 const [screen, setScreen] = createSignal<Screen>("home")
@@ -198,6 +198,7 @@ function rowMouseDown(local: number, v: Video) {
 let rendererRef: CliRenderer | null = null
 
 async function quitApp() {
+  stopPlayback() // kill any running mpv before tearing the render down / exiting
   rendererRef?.destroy()
   await rendererRef?.closed
   process.exit(0)
@@ -318,11 +319,6 @@ function subscribeCurrent() {
 function withMeta(v: Video): Video {
   const m = cachedMeta(v.id)
   return m ? { ...v, description: v.description || m.description, date: v.date || m.date, views: v.views || m.views } : v
-}
-
-function likeCurrent() {
-  const v = currentVideo()
-  if (v) playlists.add(withMeta(v))
 }
 function deleteCurrent() {
   const v = currentVideo()
@@ -492,8 +488,6 @@ export const App: Component = () => {
         return playCurrent("audio")
       case "s":
         return subscribeCurrent()
-      case "l":
-        return likeCurrent()
       case "d":
         return deleteCurrent()
     }
