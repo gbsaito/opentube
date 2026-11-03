@@ -187,8 +187,9 @@ async function invidiousUrls(id: string, mode: "video" | "audio"): Promise<Media
 async function ytdlpUrls(id: string, mode: "video" | "audio"): Promise<MediaUrls> {
   try {
     const fmt = ytdlFormat(mode)
-    // player_client bypasses the YouTube bot-check that blocks default clients today
-    const proc = Bun.spawn(["yt-dlp", "--no-warnings", "--socket-timeout", "5", "--extractor-args", "youtube:player_client=mweb,tv", "-f", fmt, "--print", "urls", `https://youtube.com/watch?v=${id}`], {
+    // player_client bypasses the YouTube bot-check that blocks default clients today; android =
+    // the autodub-free client yt-dlp resolves against here (mweb,tv was picking the dubbed stream)
+    const proc = Bun.spawn(["yt-dlp", "--no-warnings", "--socket-timeout", "5", "--extractor-args", "youtube:player_client=android", "-f", fmt, "--print", "urls", `https://youtube.com/watch?v=${id}`], {
       stdout: "pipe",
       stderr: "ignore",
     })
