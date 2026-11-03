@@ -263,6 +263,7 @@ async function doSearch(q: string) {
     searchCache.set(q, { at: Date.now(), rows })
     setVideos(await rows)
     void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
+    void ensurePageLoaded() // background-prefetch the next window so paging at 50 results is instant
   } catch (e) {
     searchCache.delete(q) // don't replay a poisoned cached promise on the next enter
     setVideos([])

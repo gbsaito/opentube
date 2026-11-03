@@ -55,12 +55,14 @@ export async function searchMoreVideos(query: string, offset: number, target: nu
     const rows = await viaYtDlp(query, target)
     return rows.slice(offset, target)
   }
+  // fetch every needed api page CONCURRENTLY (50 results = 3 round trips; sequential took 3x the row latency)
+  const first = Math.max(1, Math.floor(offset / INVIDIOUS_API_PAGE) + 1)
+  const needed = Math.ceil((target - offset) / INVIDIOUS_API_PAGE)
+  const pages = await Promise.allSettled(
+    Array.from({ length: needed }, (_, k) => viaInvidious(query, first + k)),
+  )
   const out: Video[] = []
-  for (let apiPage = Math.floor(offset / INVIDIOUS_API_PAGE) + 1; offset + out.length < target; apiPage++) {
-    const rows = await viaInvidious(query, apiPage)
-    if (rows.length === 0) break
-    out.push(...rows)
-  }
+  for (const r of pages) if (r.status === "fulfilled") out.push(...r.value)
   return out
 }
 
