@@ -28,8 +28,10 @@ import { settle } from "./spawn"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper
 const Span: Component<any> = (props) => <span {...props} />
+// link mouse events are runtime-supported but not in LinkProps typings; cast wrapper
+const A: Component<any> = (props) => <a {...props} />
 
-type Screen = "home" | "results" | "history" | "playlists" | "subscriptions" | "settings" | "nowplaying"
+type Screen = "home" | "results" | "history" | "playlists" | "subscriptions" | "settings" | "nowplaying" | "desc"
 
 // 1234567 -> "1,234,567"; non-numeric strings pass through
 const fmtViews = (s: string) => (/^\d+$/.test(s) ? Number(s).toLocaleString("en-US") : s)
@@ -65,7 +67,7 @@ const INVIDIOUS_INSTANCES: string[] = [
 ]
 const BACKEND_ORDER: BackendKey[] = ["yt-dlp", "invidious"]
 const RENDERER_LIST: readonly Settings["image_renderer"][] = ["auto", "icat", "sixel", "chafa"]
-const HINTS = "↑↓/jk move · ←→ page · enter play · p play · P audio · s subscribe · d delete · q quit · esc back"
+const HINTS = "↑↓/jk move · ←→ page · enter play · p play · P audio · s subscribe · q quit · esc back"
 
 // --- app state -----------------------------------------------------------------
 const [screen, setScreen] = createSignal<Screen>("home")
@@ -144,6 +146,14 @@ async function updateMeta(v: Video | undefined) {
   show(await videoMetaFull(id))
 }
 
+// description modal (d on a list row): full text, links clickable
+const [descFrom, setDescFrom] = createSignal<Screen | null>(null)
+const [descText, setDescText] = createSignal("")
+async function loadDesc(id: string) {
+  const m = await videoMetaFull(id)
+  setDescText(m.description.trim() || "(no description)")
+}
+
 // sidebar thumbnail
 const [thumb, setThumb] = createSignal<Uint8Array | null>(null)
 let thumbUrl = ""
@@ -170,8 +180,10 @@ async function updateThumb(v: Video | undefined) {
 }
 
 // --- derived helpers ---------------------------------------------------------------
+const [sortAsc, setSortAsc] = createSignal(false) // o: flip list order (desc = newest/natural first)
 function currentList(): Video[] {
-  return screen() === "results" ? videos() : store()?.items ?? []
+  const base = screen() === "results" ? videos() : store()?.items ?? []
+  return sortAsc() ? base.slice().reverse() : base
 }
 function currentIndex(): number {
   return screen() === "results" ? sel() : storeIndex()
@@ -412,6 +424,7 @@ export const App: Component = () => {
   // global mouse: scroll navigates, ctrl+scroll zooms
   renderer.root.onMouse = (e) => {
     if (e.type !== "scroll") return
+    if (screen() === "desc") return // description modal: keep it still, don't steer the list underneath
     // kitty fires several scroll events per notch; without throttling the cursor skips rows
     const now = Date.now()
     if (now - lastScrollStep < 70) return
@@ -561,12 +574,26 @@ export const App: Component = () => {
       }
     }
 
+    // description modal: esc returns to where it opened from, nothing else gets keystrokes
+    if (screen() === "desc") {
+      if (e.name === "escape") return setScreen(descFrom() ?? "results")
+      return
+    }
+
     // results / history / playlists / subscriptions
     switch (e.name) {
       case "escape":
         setScreen("home")
         setInputMode(false) // esc focuses the quick access menu; / returns focus to the searchbox
         return
+      case "o": {
+        // flip list order (descending = natural/newest first)
+        setSortAsc((a) => !a)
+        setStoreIndex(0)
+        setSel(0)
+        setPage(0)
+        return
+      }
       case "/":
         // edit the current query inline in the top bar (no home round-trip)
         if (screen() === "results") {
@@ -595,8 +622,18 @@ export const App: Component = () => {
         return playCurrent("audio")
       case "s":
         return subscribeCurrent()
-      case "d":
+      case "x":
         return deleteCurrent()
+      case "d":
+        // full description modal for the current row
+        const v = currentVideo()
+        if (!v) return
+        npVideo = v
+        setDescText("")
+        setDescFrom(screen())
+        setScreen("desc")
+        void loadDesc(v.id)
+        return
     }
   })
 
@@ -647,10 +684,19 @@ const NowPlaying: Component = () => {
 
 const NonHomeScreens: Component = () => (
   <box flexGrow={1} flexDirection="column" backgroundColor={theme.bg}>
-    <Chrome title={screen() === "results" ? `search › ${query()}` : screen() === "nowplaying" ? `now playing › ${npVideo?.title ?? ""}` : (screen() as string)} />
-    {screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" || screen() === "playlists" ? <StoreScreen /> : screen() === "nowplaying" ? <NowPlaying /> : <box flexGrow={1} />}
+    <Chrome title={
+      screen() === "results" ? `search › ${query()}` :
+      screen() === "nowplaying" ? `now playing › ${npVideo?.title ?? ""}` :
+      screen() === "desc" ? `description › ${npVideo?.title?.slice(0, 40) ?? ""}` :
+      (screen() as string)
+    } />
+    {screen() === "settings" ? <Settings /> : screen() === "results" ? <Results /> : screen() === "history" || screen() === "playlists" ? <StoreScreen /> : screen() === "nowplaying" ? <NowPlaying /> : screen() === "desc" ? <DescScreen /> : <box flexGrow={1} />}
     <box height={1} paddingLeft={2} backgroundColor={theme.bg}>
-      <text fg={theme.faint}>{screen() === "results" ? `${HINTS} · / edit query` : screen() === "nowplaying" ? `${HINTS} · r loop · m mute` : HINTS}</text>
+      <text fg={theme.faint}>{
+        screen() === "desc" ? "esc back" :
+        screen() === "nowplaying" ? `${HINTS} · r loop · m mute` :
+        `${HINTS.replace(" · esc back", "")}${screen() === "history" ? " · x delete" : ""} · d desc · o sort ${sortAsc() ? "asc" : "desc"}${screen() === "results" ? " · / edit query" : ""} · esc back`
+      }</text>
     </box>
   </box>
 )
@@ -907,6 +953,97 @@ const ListHint: Component<{ text: string; color?: string }> = (props) => (
     <text fg={props.color ?? theme.faint}>{props.text}</text>
   </box>
 )
+
+// --- description modal (d) ----------------------------------------------------------
+const URL_SPLIT = /(https?:\/\/\S+)/g
+
+function openUrl(u: string) {
+  try {
+    Bun.spawn(["xdg-open", u], { stdout: "ignore", stderr: "ignore" }).unref()
+  } catch {}
+}
+
+/** fold one plain-text chunk at ~92 columns, word-boundary aware */
+function foldPlain(s: string, w: number): string[] {
+  const words = s.split(/\s+/).filter(Boolean)
+  if (words.length === 0) return [""]
+  const lines: string[] = []
+  let cur = ""
+  for (const word of words) {
+    if (!cur) cur = word
+    else if (cur.length + 1 + word.length <= w) cur += ` ${word}`
+    else {
+      lines.push(cur)
+      cur = word
+    }
+  }
+  if (cur) lines.push(cur)
+  return lines
+}
+
+/** split a source line into clickable/visual pieces (urls kept whole as their own piece) */
+function descPieces(line: string, w: number): Array<{ t: string; url?: string }> {
+  const pieces: Array<{ t: string; url?: string }> = []
+  let plain = ""
+  for (const seg of line.split(/(https?:\/\/\S+)/)) {
+    if (!seg) continue
+    if (/^https?:\/\//.test(seg)) {
+      if (plain) pieces.push({ t: foldPlain(plain, w).at(-1) ?? "" }) // trailing words share the url row
+      plain = ""
+      pieces.push({ t: seg, url: seg })
+    } else {
+      if (pieces.some((p) => p.url)) {
+        // text after a url: flush as its own chunks
+        for (const l of foldPlain(plain ? `${plain} ${seg}` : seg, w)) pieces.push({ t: l })
+        plain = ""
+      } else plain += seg
+    }
+  }
+  if (plain.trim()) {
+    if (pieces.some((p) => p.url)) for (const l of foldPlain(plain, w)) pieces.push({ t: l })
+    else for (const l of foldPlain(plain, w)) pieces.push({ t: l })
+  }
+  return pieces.length ? pieces : [{ t: "" }]
+}
+
+const DescLine: Component<{ pieces: Array<{ t: string; url?: string }> }> = (props) => (
+  <box paddingLeft={2}>
+    <Show
+      when={props.pieces.some((p) => p.url)}
+      fallback={<text fg={theme.fg} selectable={false}>{props.pieces.map((p) => p.t).join("") || " "}</text>}
+    >
+      {() => (
+        <text fg={theme.fg} selectable={false}>
+          {props.pieces.map((p) =>
+            p.url
+              ? <A href={p.url} fg={theme.accent} onMouseDown={() => openUrl(p.url!)}>{p.t}</A>
+              : p.t.trim() ? p.t : "",
+          )}
+        </text>
+      )}
+    </Show>
+  </box>
+)
+
+function DescScreen() {
+  const lines = () => {
+    const acc: Array<Array<{ t: string; url?: string }>> = []
+    for (const l of descText().split(/\r\n|\r|\n/).map((s) => s.trim())) {
+      if (l === "") acc.push([{ t: "" }])
+      else acc.push(descPieces(l, 92))
+    }
+    return acc
+  }
+  return (
+    <box flexGrow={1} justifyContent="center" alignItems="center" backgroundColor={theme.bg}>
+      <box width="90%" height="96%" border={["top", "bottom", "left", "right"]} borderStyle="single" borderColor={settings().accent} backgroundColor={theme.inputBg} paddingTop={1}>
+        <scrollbox scrollY flexGrow={1}>
+          <For each={lines()}>{(pieces) => <DescLine pieces={pieces} />}</For>
+        </scrollbox>
+      </box>
+    </box>
+  )
+}
 
 const Sidebar: Component = () => {
   const v = currentVideo
