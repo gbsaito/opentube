@@ -7,6 +7,7 @@
 
 
 ## status
+- SUBS UX ROUND 6 (user: "subscribed channels names is not green in query view/history"): CHANGE: isSubscribed widened - matches by UCid (both channelId and id) OR row channel display list (v.channel + sidebarMeta().creators) so collab rows "A and B" show green when A (or B) is subscribed; store data itself verified correct. If it STILL shows grey: confirm restart after e109b79.
 - SUBS UX ROUND 5 (user: "move the description to below subscriber count for channels"): CHANGE: ChannelInfo order now name -> Subscribers -> description -> Channel Views -> Joined.
 - SUBS UX ROUND 4 (user: "make the channel name green in video info if subscribed"): CHANGE: isSubscribed() matches subscription rows by UCid (new rows id/channelId) or display title (legacy); sidebar Channel value paints #3fb950 when subscribed, normal fg otherwise.
 - SUBS UX ROUND 3 (user: "icons ok; cant move selection choose channel; channels showing video info, want channel info"): CHANGE: SubPickBody select highlight was computed once outside solid's tracking (const sel = Math.min...) so arrows changed idx but DOM never re-rendered -> reactive subPickSel(); subscriptions channel rows sidebar now ChannelInfo from channelProfile: author, description (4 lines), subCount (K/M format), totalViews/joined when the instance supplies them (>0 on chocolatemoo53 mostly absent) in place of video date/views/duration leftovers; legacy name rows resolve ucid via channelUcid. Verify: picker arrows move highlight; channel row sidebar shows subs/desc.
