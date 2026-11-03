@@ -223,15 +223,19 @@ export function play(v: Video, mode: "video" | "audio") {
   void doPlay(v, mode)
 }
 
+let playSeq = 0 // guards against interleaved doPlay awaits: only the newest call may spawn
 async function doPlay(v: Video, mode: "video" | "audio") {
+  const seq = ++playSeq
   // audio reuses the video prewarm's resolved pair (video prewarm on selection already
   // carries the best audio URL) instead of a second ~7s yt-dlp resolve
   const q = settings().quality
   prewarm(v)
   let u = await urlCache.get(`${q}:video:${v.id}`)
+  if (seq !== playSeq) return // a newer play/selection superseded this one
   if (mode === "audio" && !u?.audioUrl) {
     prewarm(v, "audio")
     u = await urlCache.get(`${q}:audio:${v.id}`)
+    if (seq !== playSeq) return
   }
   stopCurrent()
   paused = false
