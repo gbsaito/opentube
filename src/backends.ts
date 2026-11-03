@@ -66,14 +66,14 @@ export async function searchMoreVideos(query: string, offset: number, target: nu
   return out
 }
 
-/** strip html tags + entities, collapse whitespace, cap length */
+/** strip html tags + entities, keep line breaks + inner spacing (descriptions need them) */
 function clean(text: string): string {
   return text
     .replace(/<[^>]*>/g, "")
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
+    .replace(/[ \t]+/g, " ") // collapse spaces/tabs but KEEP line breaks
     .trim()
 }
 
@@ -171,13 +171,14 @@ export async function searchVideosWithFallback(query: string): Promise<Video[]> 
 
 // ponytail: ceiling is one request per selected video; upgrade to prefetch of neighbors when scroll feels sluggish
 export interface VideoMeta {
+  title: string // original-language title (search rows may carry a translated one)
   description: string
   date: string
   views: string
   duration: string
 }
 
-const EMPTY_META: VideoMeta = { description: "", date: "", views: "", duration: "" }
+const EMPTY_META: VideoMeta = { title: "", description: "", date: "", views: "", duration: "" }
 
 const metaCache = new Map<string, VideoMeta>()
 /** meta already fetched this session (no network) */
@@ -192,6 +193,7 @@ function putCache(id: string, m: VideoMeta) {
 /** merge both sources field-by-field: first non-empty wins (invidious preferred: usually fastest) */
 function mergeMeta(iv: VideoMeta | null, yt: VideoMeta | null): VideoMeta {
   return {
+    title: iv?.title || yt?.title || "",
     description: iv?.description || yt?.description || "",
     date: iv?.date || yt?.date || "",
     views: iv?.views || yt?.views || "",
@@ -250,6 +252,7 @@ async function invidiousMeta(id: string): Promise<VideoMeta | null> {
   const j = await invidiousVideoJson(id)
   if (!j) return null
   return {
+    title: String(j.title ?? ""),
     description: clean(String(j.description ?? j.descriptionHtml ?? "")),
     date: j.publishedText ?? "",
     views: String(j.viewCount ?? ""),
@@ -269,6 +272,7 @@ async function ytdlpMeta(id: string): Promise<VideoMeta> {
         const text = await new Response(proc.stdout).text()
         const j = JSON.parse(text) as any
         return {
+          title: j.title ?? "",
           description: clean(j.description ?? ""),
           date: j.upload_date ? `${j.upload_date.slice(0, 4)}-${j.upload_date.slice(4, 6)}-${j.upload_date.slice(6, 8)}` : "",
           views: String(j.view_count ?? ""),

@@ -140,10 +140,21 @@ async function updateMeta(v: Video | undefined) {
   const full = v.description && v.date && v.views // row carries everything
   const show = (m: VideoMeta) => {
     if (metaId === id) setSidebarMeta(m) // ignore stale responses
+    setOriginalTitle(id, m) // original-language title (search rows may be translated)
   }
   if (full) return setSidebarMeta(null)
   show(await videoMeta(id))
   show(await videoMetaFull(id))
+}
+
+/** swap the translated search-row title for the original-language one (results list + now playing) */
+function setOriginalTitle(id: string, m: VideoMeta) {
+  const t = m.title
+  if (!t) return
+  if (npVideo?.id === id && npVideo.title !== t) npVideo = { ...npVideo, title: t }
+  if (screen() === "results") {
+    setVideos((vs) => (vs.some((v) => v.id === id && v.title !== t) ? vs.map((v) => (v.id === id ? { ...v, title: t } : v)) : vs))
+  }
 }
 
 // description modal (d on a list row): full text, links clickable
@@ -180,10 +191,29 @@ async function updateThumb(v: Video | undefined) {
 }
 
 // --- derived helpers ---------------------------------------------------------------
-const [sortAsc, setSortAsc] = createSignal(false) // o: flip list order (desc = newest/natural first)
+// o cycles the sort field (natural/title/views/date); O (shift+o) flips asc/desc
+const [sortKey, setSortKey] = createSignal<"natural" | "title" | "views" | "date">("natural")
+const [sortAsc, setSortAsc] = createSignal(false)
+const SORT_FIELDS = ["natural", "title", "views", "date"] as const
+function viewVal(s: string | undefined): number {
+  return parseInt(String(s ?? "").replace(/[^\d]/g, ""), 10) || 0
+}
+function dateVal(v: Video): number {
+  if (v.watchedAt) return v.watchedAt
+  // results rows only know "11 months ago"-style relative dates: approximate
+  const m = String(v.date || "").match(/(\d+)\s+(second|minute|hour|day|week|month|year)/)
+  if (!m) return 0
+  const mult: Record<string, number> = { second: 1, minute: 60, hour: 3600, day: 86400, week: 604800, month: 2592000, year: 31536000 }
+  return (parseInt(m[1]!, 10) || 0) * mult[m[2]!]! * 1000
+}
 function currentList(): Video[] {
   const base = screen() === "results" ? videos() : store()?.items ?? []
-  return sortAsc() ? base.slice().reverse() : base
+  const k = sortKey()
+  if (k === "natural") return base
+  const key = { title: (v: Video) => v.title.toLowerCase(), views: (v: Video) => viewVal(v.views), date: dateVal }[k]
+  const dir = sortAsc() ? 1 : -1
+  const cmp = (a: string | number, b: string | number) => (a < b ? -1 : a > b ? 1 : 0)
+  return base.slice().sort((a, b) => cmp(key(a), key(b)) * dir)
 }
 function currentIndex(): number {
   return screen() === "results" ? sel() : storeIndex()
@@ -586,9 +616,10 @@ export const App: Component = () => {
         setScreen("home")
         setInputMode(false) // esc focuses the quick access menu; / returns focus to the searchbox
         return
-      case "o": {
-        // flip list order (descending = natural/newest first)
-        setSortAsc((a) => !a)
+      case "o":
+      case "O": {
+        if (e.shift || e.name === "O") setSortAsc((a) => !a)
+        else setSortKey((k) => k === "natural" ? "title" : k === "title" ? "views" : k === "views" ? "date" : "natural")
         setStoreIndex(0)
         setSel(0)
         setPage(0)
@@ -695,7 +726,7 @@ const NonHomeScreens: Component = () => (
       <text fg={theme.faint}>{
         screen() === "desc" ? "esc back" :
         screen() === "nowplaying" ? `${HINTS} · r loop · m mute` :
-        `${HINTS.replace(" · esc back", "")}${screen() === "history" ? " · x delete" : ""} · d desc · o sort ${sortAsc() ? "asc" : "desc"}${screen() === "results" ? " · / edit query" : ""} · esc back`
+        `${HINTS.replace(" · esc back", "")}${screen() === "history" ? " · x delete" : ""} · d desc · o sort ${sortKey()} · O ${sortAsc() ? "asc" : "desc"}${screen() === "results" ? " · / edit query" : ""} · esc back`
       }</text>
     </box>
   </box>
