@@ -7,6 +7,7 @@
 
 
 ## status
+- DESC NAV (user: "full desc: make down/up arrows navigate like j/k and scroll"): CHANGE: desc modal now routes j/k/down/up to the scrollbox (scrollBy +-1), esc clears the ref and returns. Verify by reopening d on a long desc.
 - AUDIO DUB ROOT CAUSE + FIX (9a0e2a4): acont() compared against literal "dubbed-auto" but the captured xtags value was percent-encoded (acont%3Ddubbed-auto%3Alang%3Duk) — split never fired, dub-skip was ALWAYS true, pick fell through to aud[0] = highest bitrate = dub. acont() now decodes %3A/%3D before parsing; verified on Mewing dump: 60 audio tracks = 5 original + 55 dubbed-auto, pick = original.
 - AUDIO DUB FIX FINAL (user: still dubbed in opentube even after restart): CHANGE (189fd8e): invidious audio pick order = acont=original, then skip all acont=dubbed-auto tracks, then language match, then any.
 - YOUTUBE FEATURE AUDIT (user asked what features are missing): gap vs YouTube feature set — MISSING (no code path): comments, like/dislike, watch-later/saved, live streams, shorts, trending, channel pages, notifications, recommendations feed, playback queue, captions/subtitles. PARTIAL: subscriptions (local store + `s` add + visual-only screen). PLANNED: auth (phase 4). IMPLEMENTED: search/pagination/sort/play/audio/quality/fullscreen/progress/history/playlists/descs/prompt-history/mouse/zoom/settings.
