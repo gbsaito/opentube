@@ -717,6 +717,15 @@ export const App: Component = () => {
     try { if (process.env.OTUI_DEBUG) appendFileSync("/tmp/opentube-keys.log", `${Date.now()} name=${e.name} seq=${JSON.stringify(e.sequence)} type=${e.eventType}\n`) } catch {}
     if (e.eventType === "release") return
 
+    // console overlay: ctrl+shift+c copies the console text via OSC 52 (opentui's own copy binding is selection-gated -> no-op without selection)
+    if (e.ctrl && e.shift && e.name === "c") {
+      const lines = ((renderer as any)?.console as any)?._displayLines ?? []
+      const text = lines.map((l: any) => String(l?.text ?? "")).filter(Boolean).join("\n")
+      if (text) process.stdout.write(`\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`)
+      setToast(`copied console (${lines.length} lines)`)
+      return
+    }
+
     // channel picker modal: up/down/jk pick, enter subscribe, esc cancel — blocks everything beneath
     if (subPick()) {
       const names = subPick()!
