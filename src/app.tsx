@@ -334,12 +334,17 @@ function deleteCurrent() {
 }
 
 // --- keyboard routing -----------------------------------------------------------------
+let lastScrollStep = 0
 export const App: Component = () => {
   const renderer = useRenderer()
   rendererRef = renderer
   // global mouse: scroll navigates, ctrl+scroll zooms
   renderer.root.onMouse = (e) => {
     if (e.type !== "scroll") return
+    // kitty fires several scroll events per notch; without throttling the cursor skips rows
+    const now = Date.now()
+    if (now - lastScrollStep < 70) return
+    lastScrollStep = now
     const dir = e.scroll?.direction === "up" ? -1 : 1
     if (e.modifiers.ctrl) {
       setZoomLevel((z) => Math.min(2, Math.max(0.5, z + dir * 0.25)))
@@ -697,7 +702,7 @@ const ListRow: Component<{ v: Video; selected: boolean; local: number }> = (prop
         if (e.button === 0) rowMouseDown(props.local, props.v)
       }}
     >
-      <text fg={theme.fg}>
+      <text selectable={false} fg={theme.fg}>
         <Span fg={props.selected ? theme.fg : theme.selectionBg}>{mark()}</Span>
         {props.v.title.slice(0, 68)}
         <Show when={props.v.duration}>
