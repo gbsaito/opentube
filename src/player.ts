@@ -125,7 +125,49 @@ async function poll() {
   }
 }
 
+// --- prefetch: resolve media URLs on hover/selection so play() skips the ~4s mpv/ytdl hop ---
+type MediaUrls = { videoUrl?: string; audioUrl?: string }
+const urlCache = new Map<string, Promise<MediaUrls>>()
+
+function resolveUrls(id: string, mode: "video" | "audio"): Promise<MediaUrls> {
+  return (async () => {
+    try {
+      const fmt = mode === "audio" ? "ba" : "bv*+ba/b"
+      const proc = Bun.spawn(["yt-dlp", "--no-warnings", "--socket-timeout", "5", "-f", fmt, "--print", "urls", `https://youtube.com/watch?v=${id}`], {
+        stdout: "pipe",
+        stderr: "ignore",
+      })
+      const text = await new Response(proc.stdout).text()
+      const urls = text.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("http"))
+      if (urls.length === 0) return {}
+      if (urls.length === 1) return { videoUrl: urls[0]!, audioUrl: mode === "audio" ? urls[0]! : undefined }
+      return { videoUrl: urls[0]!, audioUrl: urls[1]! } // bv*+ba: first = video, second = audio
+    } catch {
+      return {}
+    }
+  })()
+}
+
+/** start resolving play URLs in the background (call on row selection/hover) */
+export function prewarm(v: Video | undefined, mode: "video" | "audio" = "video") {
+  const id = v?.id
+  if (!id) return
+  const key = `${mode}:${id}`
+  if (!urlCache.has(key)) urlCache.set(key, resolveUrls(id, mode))
+  // ponytail: LRU-less cap; drop oldest when oversized
+  if (urlCache.size > 24) {
+    const first = urlCache.keys().next().value
+    if (first) urlCache.delete(first)
+  }
+}
+
 export function play(v: Video, mode: "video" | "audio") {
+  void doPlay(v, mode)
+}
+
+async function doPlay(v: Video, mode: "video" | "audio") {
+  prewarm(v, mode)
+  const u = await urlCache.get(`${mode}:${v.id}`)
   stopCurrent()
   paused = false
   setNpPaused(false)
@@ -133,8 +175,24 @@ export function play(v: Video, mode: "video" | "audio") {
   setNpMuted(false)
   resetProgress()
   socketPath = `/tmp/opentube-mpv-${Date.now()}.sock`
-  const args = mode === "audio" ? ["--no-video"] : ["--ytdl-format=bestvideo+bestaudio/best"]
-  current = Bun.spawn(["mpv", ...args, "--no-terminal", "--ytdl=yes", `--input-ipc-server=${socketPath}`, url(v)], {
+  const base = ["--no-terminal", `--input-ipc-server=${socketPath}`]
+  let mediaUrl: string | undefined
+  const args: string[] = []
+  if (mode === "audio") {
+    mediaUrl = u?.audioUrl ?? u?.videoUrl
+    if (mediaUrl) args.push("--no-video", "--no-ytdl")
+  } else {
+    mediaUrl = u?.videoUrl
+    if (mediaUrl) {
+      args.push("--no-ytdl")
+      if (u?.audioUrl) args.push(`--audio-file=${u.audioUrl}`)
+    }
+  }
+  if (!mediaUrl) {
+    args.push("--ytdl-format=bestvideo+bestaudio/best", "--ytdl=yes")
+    mediaUrl = url(v)
+  }
+  current = Bun.spawn(["mpv", ...base, ...args, mediaUrl], {
     stdout: "ignore",
     stderr: "ignore",
   })
