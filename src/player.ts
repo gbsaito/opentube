@@ -317,10 +317,11 @@ async function doPlay(v: Video, mode: "video" | "audio", bypass = false) {
     try {
       appendFileSync("/tmp/opentube-playback.log", `${new Date().toISOString()} exit=${code} played=${Math.floor(t)}/${Math.floor(d)}s mode=${mode} bypass=${bypass} ${v.id} (stderr: /tmp/opentube-mpv-last.log)\n`)
     } catch {}
-    // mpv died without ever playing (expired/403'd resolved direct URL): retry ONCE via
-    // mpv's own yt-dlp path (watch URL + client-probing shim) before giving up to the UI
+    // mpv died without ever playing (expired/403'd resolved direct URL, or the
+    // ytdl shim's client probes passed a poison URL in a bad server mood): retry
+    // ONCE via a fresh resolve/ytdl run before giving up to the UI
     const neverPlayed = t <= 0 && d <= 0 && Date.now() - firstPlayAt < 10000
-    if (spawnedWithDirect && !bypass && neverPlayed) {
+    if ((spawnedWithDirect || mode === "audio") && !bypass && neverPlayed) {
       urlCache.delete(`${q}:video:${v.id}`)
       urlCache.delete(`${q}:audio:${v.id}`) // poisoned resolve, don't hand it out again
       void doPlay(v, mode, true)
