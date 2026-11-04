@@ -1346,29 +1346,24 @@ function foldPlain(s: string, w: number): string[] {
   return lines
 }
 
-/** split a source line into clickable/visual pieces (urls kept whole as their own piece) */
-function descPieces(line: string, w: number): Array<{ t: string; url?: string }> {
-  const pieces: Array<{ t: string; url?: string }> = []
-  let plain = ""
+/** split a source line into visual ROWS of clickable/visual pieces (urls kept whole; fold at ~92 cols).
+ *  One row per folded line — DescLine renders each row as its own screen line, so fold boundaries
+ *  keep their line break (joining rows back into one text merged words: "Where yourenergy"). */
+export function descPieces(line: string, w: number): Array<Array<{ t: string; url?: string }>> {
+  const rows: Array<Array<{ t: string; url?: string }>> = []
   for (const seg of line.split(/(https?:\/\/\S+)/)) {
     if (!seg) continue
     if (/^https?:\/\//.test(seg)) {
-      if (plain) pieces.push({ t: foldPlain(plain, w).at(-1) ?? "" }) // trailing words share the url row
-      plain = ""
-      pieces.push({ t: seg, url: seg })
+      // url shares the trailing-words row, then ends it
+      if (rows.length === 0) rows.push([{ t: seg, url: seg }])
+      else rows[rows.length - 1]!.push({ t: seg, url: seg })
+      rows.push([])
     } else {
-      if (pieces.some((p) => p.url)) {
-        // text after a url: flush as its own chunks
-        for (const l of foldPlain(plain ? `${plain} ${seg}` : seg, w)) pieces.push({ t: l })
-        plain = ""
-      } else plain += seg
+      for (const l of foldPlain(seg, w)) rows.push([{ t: l }])
     }
   }
-  if (plain.trim()) {
-    if (pieces.some((p) => p.url)) for (const l of foldPlain(plain, w)) pieces.push({ t: l })
-    else for (const l of foldPlain(plain, w)) pieces.push({ t: l })
-  }
-  return pieces.length ? pieces : [{ t: "" }]
+  const out = rows.filter((r) => r.length > 0)
+  return out.length > 0 ? out : [[{ t: "" }]]
 }
 
 const DescLine: Component<{ pieces: Array<{ t: string; url?: string }> }> = (props) => (
@@ -1395,7 +1390,7 @@ function DescScreen() {
     const acc: Array<Array<{ t: string; url?: string }>> = []
     for (const l of descText().split(/\r\n|\r|\n/).map((s) => s.trim())) {
       if (l === "") acc.push([{ t: "" }])
-      else acc.push(descPieces(l, 92))
+      else acc.push(...descPieces(l, 92))
     }
     return acc
   }
