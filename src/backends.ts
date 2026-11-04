@@ -10,7 +10,7 @@ const INVIDIOUS = ["https://yt.chocolatemoo53.com", "https://inv.nadeko.net", "h
 // flat-playlist: fast rows (no per-video metadata crawl); missing date is filled
 // lazily by updateMeta on selection
 async function viaYtDlp(query: string, count?: number): Promise<Video[]> {
-  const n = count ?? settings().results_count
+  const n = count ?? 50
   const proc = Bun.spawn(["yt-dlp", "--dump-json", "--flat-playlist", `ytsearch${n}:${query}`], {
     stdout: "pipe",
     stderr: "ignore",
@@ -65,7 +65,7 @@ async function viaInvidious(query: string, apiPage = 1): Promise<Video[]> {
 }
 
 // --- pagination ---------------------------------------------------------------------
-// ponytail: invidious pages are fixed at ~20 rows; windows (results_count) may mix API page boundaries
+// ponytail: invidious pages are fixed at ~20 rows; row windows may mix API page boundaries
 const INVIDIOUS_API_PAGE = 20
 
 /** rows so that the caller holds exactly `target` rows (fewer when results ran out) */
@@ -133,9 +133,18 @@ function candidate(pool: string[], user: string): string[] {
   return [...new Set([user, ...pool].filter(Boolean).map((u) => u.replace(/\/$/, "")))]
 }
 
-const BACKENDS: Record<BackendKey, (query: string) => Promise<Video[]>> = {
-  "yt-dlp": viaYtDlp,
-  invidious: viaInvidious,
+const BACKENDS: Record<BackendKey, (query: string, count?: number) => Promise<Video[]>> = {
+  "yt-dlp": viaYtDlp, // count = row cap
+  invidious: async (query, count) => {
+    // count = row cap -> ceil(count/20) api pages fetched concurrently (1 page = 20 rows)
+    const pages = Math.max(1, Math.ceil((count ?? INVIDIOUS_API_PAGE) / INVIDIOUS_API_PAGE))
+    const settled = await Promise.allSettled(
+      Array.from({ length: pages }, (_, k) => viaInvidious(query, 1 + k)),
+    )
+    const out: Video[] = []
+    for (const r of settled) if (r.status === "fulfilled") out.push(...r.value)
+    return out
+  },
 }
 
 /** raw /api/v1/videos JSON; races all instances, first success wins */
@@ -174,18 +183,18 @@ export function invidiousVideoJson(id: string): Promise<any | null> {
   return j
 }
 
-export function searchVideos(query: string): Promise<Video[]> {
-  return BACKENDS[settings().backend](query)
+export function searchVideos(query: string, count?: number): Promise<Video[]> {
+  return BACKENDS[settings().backend](query, count)
 }
 
 /** primary backend failed entirely (all instances down / no instance reachable): fall through to the other backend */
-export async function searchVideosWithFallback(query: string): Promise<Video[]> {
+export async function searchVideosWithFallback(query: string, count?: number): Promise<Video[]> {
   try {
-    return await searchVideos(query)
+    return await searchVideos(query, count)
   } catch (e) {
     const other: BackendKey = settings().backend === "invidious" ? "yt-dlp" : "invidious"
     void e // first failure noted; the fallback's own error (if any) is what the user sees
-    return await BACKENDS[other](query)
+    return await BACKENDS[other](query, count)
   }
 }
 

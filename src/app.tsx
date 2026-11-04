@@ -62,8 +62,8 @@ const QUICK_LABEL: Record<string, string> = {
   settings: "Settings",
   quit: "Quit",
 }
-const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "results_count", "page_count", "prompt_history", "history_limit", "previews", "image_previews", "title_font", "accent", "fullscreen", "quality"]
-const EDITABLE_NUMBERS: readonly string[] = ["results_count", "page_count", "history_limit"]
+const SETTINGS_KEYS: readonly string[] = ["backend", "invidious_instance", "prompt_history", "history_limit", "previews", "image_previews", "title_font", "accent", "fullscreen", "quality"]
+const EDITABLE_NUMBERS: readonly string[] = ["history_limit"]
 const INVIDIOUS_INSTANCES: string[] = [
   "https://yt.chocolatemoo53.com",
   "https://inv.nadeko.net",
@@ -118,9 +118,7 @@ function commitEdit() {
   const key = editing()
   if (!key) return setEditing(null)
   const s = { ...settings() } as any
-  if (key === "results_count") s.results_count = Math.min(Math.max(parseInt(editBuf(), 10) || 25, 1), 50)
-  else if (key === "page_count") s.page_count = Math.min(Math.max(parseInt(editBuf(), 10) || 2, 1), 20) // ponytail: no-op setting yet; range guessed until wired
-  else if (key === "history_limit") s.history_limit = Math.min(Math.max(parseInt(editBuf(), 10) || 50, 5), 500)
+  if (key === "history_limit") s.history_limit = Math.min(Math.max(parseInt(editBuf(), 10) || 50, 5), 500)
   else s[key] = editBuf()
   setSettings(s)
   if (key === "history_limit") queries.setCap(s.history_limit)
@@ -374,12 +372,16 @@ function currentVideo(): Video | undefined {
   return currentList()[currentIndex()]
 }
 
-// pagination helpers (shared by every list screen)
+// pagination helpers (shared by every list screen).
+// Page size fills the vertical space: terminal rows minus chrome (status bar + title/padding).
+// Hard cap: 10 pages on every screen.
+const MAX_PAGES = 10
+const [termRows, setTermRows] = createSignal(24)
 function pageSize(): number {
-  return Math.max(1, Math.round(settings().results_count))
+  return Math.min(60, Math.max(4, termRows() - 4))
 }
 function pageCount(): number {
-  return Math.max(1, Math.ceil(currentList().length / pageSize()))
+  return Math.min(MAX_PAGES, Math.max(1, Math.ceil(currentList().length / pageSize())))
 }
 function visibleList(): Video[] {
   const size = pageSize()
@@ -475,7 +477,7 @@ async function doSearch(q: string) {
   thumbUrl = "" // updateThumb launches would poison its stale-guard and the new thumb never lands
   try {
     const cached = searchCache.get(q)
-    const rows = cached && Date.now() - cached.at < SEARCH_TTL ? cached.rows : searchVideosWithFallback(q)
+    const rows = cached && Date.now() - cached.at < SEARCH_TTL ? cached.rows : searchVideosWithFallback(q, pageSize() * 2)
     searchCache.set(q, { at: Date.now(), rows })
     setVideos(await rows)
     void Promise.all([updateThumb(videos()[0]), updateMeta(videos()[0])])
@@ -510,6 +512,7 @@ function moveSelection(delta: number) {
 async function goPage(dir: 1 | -1) {
   const next = page() + dir
   if (next < 0) return
+  if (next >= MAX_PAGES) return
   if (next >= pageCount() && (screen() !== "results" || exhausted())) return
   setPage(next)
   // keep the cursor inside the new window
@@ -528,7 +531,7 @@ async function goPage(dir: 1 | -1) {
 async function ensurePageLoaded() {
   if (screen() !== "results" || exhausted() || loadingMore()) return
   const size = pageSize()
-  const target = (page() + 1) * size
+  const target = Math.min((page() + 1) * size, MAX_PAGES * size)
   const before = videos().length
   if (before >= target) return
   setLoadingMore(true)
@@ -699,6 +702,12 @@ let lastScrollStep = 0
 export const App: Component = () => {
   const renderer = useRenderer()
   rendererRef = renderer
+  // viewport-fit paging: track terminal rows, keep the page cursor inside the shrunken list
+  setTermRows(renderer.height)
+  renderer.on("resize", () => {
+    setTermRows(renderer.height)
+    setPage((p) => Math.min(p, pageCount() - 1))
+  })
   // global mouse: scroll navigates, ctrl+scroll zooms
   renderer.root.onMouse = (e) => {
     if (e.type !== "scroll") return
