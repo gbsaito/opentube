@@ -357,6 +357,7 @@ function currentIndex(): number {
 }
 
 const [toast, setToast] = createSignal("")
+let nextPageToastTimer: ReturnType<typeof setTimeout> | undefined
 
 /** y yanks the current video's youtu.be link: OSC 52 escape writes the clipboard directly
  *  (kitty/wezterm/alacritty/foot honour it, survives ssh, no xclip dependency) */
@@ -513,7 +514,13 @@ async function goPage(dir: 1 | -1) {
   const next = page() + dir
   if (next < 0) return
   if (next >= MAX_PAGES) return
-  if (next >= pageCount() && (screen() !== "results" || exhausted())) return
+  if (next >= pageCount()) {
+    // results may hold more rows behind the loaded window: fetch them instead of
+    // free-wheeling the cursor onto a blank page; rows landing raises pageCount
+    if (screen() !== "results" || exhausted()) return
+    void ensurePageLoaded()
+    return
+  }
   setPage(next)
   // keep the cursor inside the new window
   const start = next * pageSize()
@@ -527,11 +534,12 @@ async function goPage(dir: 1 | -1) {
   await ensurePageLoaded()
 }
 
-/** fetch behind-the-window rows when paging forward in results */
+/** fetch behind-the-window rows when paging forward in results.
+ *  Target runs one page AHEAD of the cursor so the next → press always has rows waiting. */
 async function ensurePageLoaded() {
   if (screen() !== "results" || exhausted() || loadingMore()) return
   const size = pageSize()
-  const target = Math.min((page() + 1) * size, MAX_PAGES * size)
+  const target = Math.min((page() + 2) * size, MAX_PAGES * size)
   const before = videos().length
   if (before >= target) return
   setLoadingMore(true)
@@ -540,10 +548,15 @@ async function ensurePageLoaded() {
     const seen = new Set(videos().map((v) => v.id))
     const fresh = more.filter((v) => v.id && !seen.has(v.id))
     setVideos([...videos(), ...fresh])
-    if (videos().length < target) setExhausted(true)
+    // end of results = a fetch that yielded nothing new (dup-heavy searches otherwise
+    // look "short" and would cap pages forever); a short-but-fresh fetch keeps paging
+    if (fresh.length === 0) setExhausted(true)
     void fillOriginalTitles(fresh, []) // continuation rows need their original titles too
   } catch {
-    setExhausted(true) // continuation failure: no more pages, keep current rows
+    // transient failure (dead instance / hung yt-dlp): stay retryable, don't cap pages forever
+    setToast("next page failed — press → to retry")
+    clearTimeout(nextPageToastTimer)
+    nextPageToastTimer = setTimeout(() => setToast(""), 5000)
   } finally {
     setLoadingMore(false)
   }

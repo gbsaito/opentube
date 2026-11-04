@@ -11,9 +11,11 @@ const INVIDIOUS = ["https://yt.chocolatemoo53.com", "https://inv.nadeko.net", "h
 // lazily by updateMeta on selection
 async function viaYtDlp(query: string, count?: number): Promise<Video[]> {
   const n = count ?? 50
+  // hang guard: a stuck yt-dlp (js-challenge loop) must not wedge loadingMore forever
   const proc = Bun.spawn(["yt-dlp", "--dump-json", "--flat-playlist", `ytsearch${n}:${query}`], {
     stdout: "pipe",
     stderr: "ignore",
+    signal: AbortSignal.timeout(90_000),
   })
   const text = await new Response(proc.stdout).text()
   const rows = text
