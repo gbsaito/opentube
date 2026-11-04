@@ -3,6 +3,7 @@ import { settings } from "./config"
 import { limit } from "./spawn"
 import { invidiousVideoJson } from "./backends"
 import { createSignal } from "solid-js"
+import { appendFileSync } from "fs"
 
 const url = (v: Video) => `https://youtube.com/watch?v=${v.id}`
 
@@ -250,23 +251,19 @@ export function play(v: Video, mode: "video" | "audio") {
 let playSeq = 0 // guards against interleaved doPlay awaits: only the newest call may spawn
 async function doPlay(v: Video, mode: "video" | "audio", bypass = false) {
   const seq = ++playSeq
-  // audio reuses the video prewarm's resolved pair (video prewarm on selection already
-  // carries the best audio URL) instead of a second ~7s yt-dlp resolve
   const q = settings().quality
-  // bypass: skip resolution entirely, let mpv/ytdl resolve the watch page itself (stale-URL retry)
-  // fresh-resolve every play: backend/pick fixes don't invalidate the session urlCache (stale dubbed URL)
-  if (!bypass) {
-    urlCache.delete(`${q}:video:${v.id}`)
-    urlCache.delete(`${q}:audio:${v.id}`)
+  let u: MediaUrls | undefined
+  if (mode === "video") {
+    // bypass: skip resolution entirely, let mpv/ytdl resolve the watch page itself (stale-URL retry)
+    // fresh-resolve every play: backend/pick fixes don't invalidate the session urlCache (stale dubbed URL)
+    if (!bypass) {
+      urlCache.delete(`${q}:video:${v.id}`)
+      urlCache.delete(`${q}:audio:${v.id}`)
+    }
+    u = bypass ? undefined : (prewarm(v), await urlCache.get(`${q}:video:${v.id}`))
+    if (!bypass && seq !== playSeq) return // a newer play/selection superseded this one
   }
-  let u = bypass ? undefined : (prewarm(v), await urlCache.get(`${q}:video:${v.id}`))
-  if (!bypass && seq !== playSeq) return // a newer play/selection superseded this one
-  if (!bypass && mode === "audio" && !u?.audioUrl) {
-    prewarm(v, "audio")
-    u = await urlCache.get(`${q}:audio:${v.id}`)
-    if (seq !== playSeq) return
-  }
-  const spawnedWithDirect = !!(bypass ? undefined : u?.audioUrl ?? u?.videoUrl)
+  const spawnedWithDirect = !bypass && mode === "video" && !!(u?.videoUrl ?? u?.audioUrl)
   stopCurrent()
   paused = false
   setNpPaused(false)
@@ -279,8 +276,12 @@ async function doPlay(v: Video, mode: "video" | "audio", bypass = false) {
   let mediaUrl: string | undefined
   const args: string[] = []
   if (mode === "audio") {
-    mediaUrl = u?.audioUrl ?? u?.videoUrl
-    if (mediaUrl) args.push("--no-video", "--no-ytdl")
+    // googlevideo serves exactly ONE 1MiB range GET per invidious-issued URL and 403s every
+    // follow-up — a direct audio stream hits a clean EOF once the 1MiB buffer runs dry (~65s of
+    // audio; past the 10s neverPlayed retry window, so audio uniquely died mid-listen). mpv's own
+    // yt-dlp shim streams whole tracks (fresh tokens per connection) — always use it for audio.
+    args.push("--no-video", `--ytdl-format=${ytdlFormat(mode)}`, "--ytdl=yes")
+    mediaUrl = url(v)
   } else {
     mediaUrl = u?.videoUrl
     if (mediaUrl) {
@@ -292,13 +293,17 @@ async function doPlay(v: Video, mode: "video" | "audio", bypass = false) {
     args.push(`--ytdl-format=${ytdlFormat(mode)}`, "--ytdl=yes")
     mediaUrl = url(v)
   }
+  // ponytail: mpv's log goes to /tmp/opentube-mpv-last.log (truncated per play) — mid-track deaths
+  // were invisible before (--no-terminal silences stderr entirely, so use --log-file); drop the
+  // capture once the death reason is known/handled
+  args.push("--log-file=/tmp/opentube-mpv-last.log")
   const proc = Bun.spawn(["mpv", ...base, ...args, mediaUrl], {
     stdout: "ignore",
     stderr: "ignore",
   })
   proc.unref()
   current = proc
-  proc.exited.then(() => {
+  proc.exited.then((code) => {
     if (current !== proc) return // superseded by a newer playback; its own exit handles teardown
     current = null
     try {
@@ -307,9 +312,14 @@ async function doPlay(v: Video, mode: "video" | "audio", bypass = false) {
     conn = null
     if (poller) clearInterval(poller)
     poller = null
+    const t = npTime()
+    const d = npDur()
+    try {
+      appendFileSync("/tmp/opentube-playback.log", `${new Date().toISOString()} exit=${code} played=${Math.floor(t)}/${Math.floor(d)}s mode=${mode} bypass=${bypass} ${v.id} (stderr: /tmp/opentube-mpv-last.log)\n`)
+    } catch {}
     // mpv died without ever playing (expired/403'd resolved direct URL): retry ONCE via
     // mpv's own yt-dlp path (watch URL + client-probing shim) before giving up to the UI
-    const neverPlayed = npTime() <= 0 && npDur() <= 0 && Date.now() - firstPlayAt < 10000
+    const neverPlayed = t <= 0 && d <= 0 && Date.now() - firstPlayAt < 10000
     if (spawnedWithDirect && !bypass && neverPlayed) {
       urlCache.delete(`${q}:video:${v.id}`)
       urlCache.delete(`${q}:audio:${v.id}`) // poisoned resolve, don't hand it out again
