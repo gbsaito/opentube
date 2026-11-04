@@ -31,8 +31,13 @@ import { settle } from "./spawn"
 // never <text>: a nested <text> is a TextRenderable, and inserting that into a <text> node's
 // children throws "TextNodeRenderable only accepts strings..." on every solid re-render
 // (insertExpression -> cleanChildren -> TextNode.add) — the search-enter crash.
-// Bind fg/children as prop GETTERS, not a spread — {...props} copies values once, colors freeze.
-const Span: Component<any> = (props) => <span fg={props.fg}>{props.children == null ? "" : props.children}</span> as any
+// Bind fg as a prop GETTER, not a spread — {...props} copies values once, colors freeze.
+const Span: Component<any> = (props) => (
+  <span
+    // @ts-expect-error SpanProps typings omit fg; runtime TextNodeOptions supports it
+    fg={props.fg}
+  >{props.children == null ? "" : props.children}</span>
+)
 // link mouse events are runtime-supported but not in LinkProps typings; cast wrapper
 const A: Component<any> = (props) => <a {...props} />
 
