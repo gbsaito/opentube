@@ -27,11 +27,12 @@ import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear,
 import { settle } from "./spawn"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper.
-// CRITICAL: bind fg/children as prop GETTERS, not an element spread — a plain {...props} spread
-// copies values once at mount (components render once in solid) and dynamic colors freeze.
-// Also: children can momentarily be undefined ({v()?.channel} re-runs one tick past Show teardown)
-// — opentui's TextNodeRenderable throws on undefined, so coerce to "".
-const Span: Component<any> = (props) => <text fg={props.fg}>{props.children == null ? "" : props.children}</text>
+// CRITICAL: MUST render <span> (SpanRenderable extends TextNodeRenderable — a valid text child),
+// never <text>: a nested <text> is a TextRenderable, and inserting that into a <text> node's
+// children throws "TextNodeRenderable only accepts strings..." on every solid re-render
+// (insertExpression -> cleanChildren -> TextNode.add) — the search-enter crash.
+// Bind fg/children as prop GETTERS, not a spread — {...props} copies values once, colors freeze.
+const Span: Component<any> = (props) => <span fg={props.fg}>{props.children == null ? "" : props.children}</span> as any
 // link mouse events are runtime-supported but not in LinkProps typings; cast wrapper
 const A: Component<any> = (props) => <a {...props} />
 
