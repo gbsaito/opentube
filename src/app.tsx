@@ -28,8 +28,10 @@ import { settle } from "./spawn"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper.
 // CRITICAL: bind fg/children as prop GETTERS, not an element spread — a plain {...props} spread
-// copies values once at mount (components render once in solid) and dynamic colors freeze
-const Span: Component<any> = (props) => <text fg={props.fg}>{props.children}</text>
+// copies values once at mount (components render once in solid) and dynamic colors freeze.
+// Also: children can momentarily be undefined ({v()?.channel} re-runs one tick past Show teardown)
+// — opentui's TextNodeRenderable throws on undefined, so coerce to "".
+const Span: Component<any> = (props) => <text fg={props.fg}>{props.children == null ? "" : props.children}</text>
 // link mouse events are runtime-supported but not in LinkProps typings; cast wrapper
 const A: Component<any> = (props) => <a {...props} />
 
@@ -717,8 +719,9 @@ export const App: Component = () => {
     try { if (process.env.OTUI_DEBUG) appendFileSync("/tmp/opentube-keys.log", `${Date.now()} name=${e.name} seq=${JSON.stringify(e.sequence)} type=${e.eventType}\n`) } catch {}
     if (e.eventType === "release") return
 
-    // console overlay: ctrl+shift+c copies the console text via OSC 52 (opentui's own copy binding is selection-gated -> no-op without selection)
-    if (e.ctrl && e.shift && e.name === "c") {
+    // console overlay: ctrl+shift+c copies the console text via OSC 52 (opentui's own copy binding is selection-gated -> no-op without selection).
+    // kitty parses ctrl+shift+c as name "c" seq "C"; plain xterm sends "\x03" — match all shapes
+    if ((e.name === "c" || e.sequence === "C" || e.sequence === "\x03") && (e.ctrl || e.shift)) {
       const lines = ((renderer as any)?.console as any)?._displayLines ?? []
       const text = lines.map((l: any) => String(l?.text ?? "")).filter(Boolean).join("\n")
       if (text) process.stdout.write(`\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`)
