@@ -23,7 +23,7 @@ import {
   QUALITY_ORDER,
 } from "./config"
 import { searchVideos, searchVideosWithFallback, searchMoreVideos, videoMeta, videoMetaFull, cachedMeta, EMPTY_META, ERR_MSG, channelVideos, channelUcid, channelProfile, type BackendKey, type VideoMeta } from "./backends"
-import { play, npTime, npDur, npLoop, npPaused, npMuted, prewarm, urlCacheClear, stopPlayback, onPlaybackEnd, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
+import { play, npTime, npDur, npLoop, npPaused, npMuted, stopPlayback, onPlaybackEnd, togglePause, toggleLoop, toggleMute, seekTo } from "./player"
 import { settle } from "./spawn"
 
 // span styling props are runtime-supported but not in SpanProps typings; cast wrapper.
@@ -568,10 +568,9 @@ function refreshSidebar(v: Video | undefined) {
   if (screen() === "home" || screen() === "settings") return // no sidebar there
   if (sidebarRow === row?.id) return // same row: nothing new to fetch
   sidebarRow = row?.id
-  // defer prewarm + meta fetches ~350ms past cursor settling: scrolling across rows
-  // doesn't fire one yt-dlp/meta spawn per row (was freezing the whole PC at 50 results)
+  // defer meta fetches ~350ms past cursor settling: scrolling across rows
+  // doesn't fire one meta spawn per row (was freezing the whole PC at 50 results)
   sidebarDeferrer(() => {
-    prewarm(row)
     void updateMeta(row)
   })
   // thumbnails are a ~50ms CDN fetch: straight away, not debounced
@@ -850,8 +849,6 @@ export const App: Component = () => {
           const idx = QUALITY_ORDER.indexOf(s.quality)
           const next = QUALITY_ORDER[(idx + dir + QUALITY_ORDER.length) % QUALITY_ORDER.length]!
           setSettings({ ...settings(), quality: next } as any)
-          // invalidate prefetched URLs resolved under the old quality
-          urlCacheClear()
         } else if (EDITABLE_NUMBERS.includes(row)) {
           setEditing(row)
           setEditBuf(String((settings() as any)[row]))
